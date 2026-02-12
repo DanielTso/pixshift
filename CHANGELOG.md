@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-12
+
+### Added
+- Auto-rotate images based on EXIF orientation (`--auto-rotate`, supports orientations 1-8)
+- Image cropping with exact dimensions (`--crop WxH`), aspect ratio (`--crop-ratio W:H`), and gravity anchor (`--crop-gravity center|north|south|east|west`)
+- Text watermarking (`--watermark`, `--watermark-pos`, `--watermark-opacity`) with configurable position and opacity
+- Directory tree view (`--tree`) showing supported image files with box-drawing characters, file sizes, and format labels
+- Duplicate image detection (`--dedup`, `--dedup-threshold`) using perceptual hashing (dHash + Hamming distance)
+- SSIM image quality comparison (`--ssim file1 file2`) with quality ratings (Excellent/Good/Acceptable/Poor/Bad)
+- Contact sheet generation (`--contact-sheet`, `--contact-cols`, `--contact-size`) for thumbnail grid images
+- Named presets (`--preset web|thumbnail|print|archive`) with predefined conversion settings
+- Backup originals (`--backup`) creates `.bak` files before converting
+- JSON output mode (`--json`) for machine-readable results
+- Stdin/stdout piping (`cat img | pixshift -f webp - > out.webp`) for pipe-based workflows
+- HTTP conversion server (`pixshift serve [addr]`) with `/convert`, `/formats`, and `/health` endpoints
+- Unit tests: 60 new tests across transform, tree, preset, dedup, ssim, contact, and server packages (103 total)
+
 ## [0.2.0] - 2026-02-12
 
 ### Added
@@ -50,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pixshift.yaml.example` with sample rules configuration
 - `CONTRIBUTING.md` with guide for adding new codecs
 
-[Unreleased]: https://github.com/DanielTso/pixshift/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/DanielTso/pixshift/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/DanielTso/pixshift/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/DanielTso/pixshift/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/DanielTso/pixshift/releases/tag/v0.1.0

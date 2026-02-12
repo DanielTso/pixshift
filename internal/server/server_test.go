@@ -198,7 +198,7 @@ func TestHandleConvert_MissingFile_Returns400(t *testing.T) {
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	writer.WriteField("format", "png")
+	_ = writer.WriteField("format", "png")
 	writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/convert", &body)
@@ -223,7 +223,7 @@ func TestHandleConvert_MissingFormat_Returns400(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, _ := writer.CreateFormFile("file", "test.jpg")
-	part.Write(jpegData)
+	_, _ = part.Write(jpegData)
 	// Intentionally omit format field
 	writer.Close()
 
@@ -249,8 +249,8 @@ func TestHandleConvert_InvalidFormat_Returns400(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, _ := writer.CreateFormFile("file", "test.jpg")
-	part.Write(jpegData)
-	writer.WriteField("format", "notaformat")
+	_, _ = part.Write(jpegData)
+	_ = writer.WriteField("format", "notaformat")
 	writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/convert", &body)
@@ -289,9 +289,9 @@ func TestHandleConvert_WithQuality(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, _ := writer.CreateFormFile("file", "test.jpg")
-	part.Write(jpegData)
-	writer.WriteField("format", "jpeg")
-	writer.WriteField("quality", "50")
+	_, _ = part.Write(jpegData)
+	_ = writer.WriteField("format", "jpeg")
+	_ = writer.WriteField("quality", "50")
 	writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/convert", &body)

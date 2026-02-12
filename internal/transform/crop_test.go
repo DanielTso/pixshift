@@ -129,9 +129,6 @@ func TestCrop_SubImageZeroCopy(t *testing.T) {
 	img := newCropTestImage(100, 80)
 	out := Crop(img, CropOptions{Width: 50, Height: 40})
 	// The output should be a sub-image (shares underlying pixel data)
-	type subImager interface {
-		SubImage(r image.Rectangle) image.Image
-	}
 	if _, ok := out.(*image.RGBA); !ok {
 		t.Errorf("expected *image.RGBA from SubImage path, got %T", out)
 	}

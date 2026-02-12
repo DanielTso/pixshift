@@ -44,7 +44,6 @@ func ApplyWatermark(img image.Image, opts WatermarkOptions) image.Image {
 	textW := font.MeasureString(face, opts.Text).Ceil()
 	textH := metrics.Ascent.Ceil() + metrics.Descent.Ceil()
 
-	const margin = 10
 	const padX = 4
 	const padY = 2
 

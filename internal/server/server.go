@@ -64,7 +64,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleFormats(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +83,7 @@ func (s *Server) handleFormats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string][]string{
+	_ = json.NewEncoder(w).Encode(map[string][]string{
 		"decode": decode,
 		"encode": encode,
 	})

@@ -168,7 +168,7 @@ func main() {
 			}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(out)
+			_ = enc.Encode(out)
 		} else {
 			fmt.Printf("SSIM: %.4f (%s)\n", score, ssim.Rating(score))
 			fmt.Printf("  %s\n  %s\n", opts.ssimFiles[0], opts.ssimFiles[1])
@@ -277,7 +277,7 @@ func runStdinMode(pipe *pipeline.Pipeline, reg *codec.Registry, outputFormat cod
 		fatal("read output: %v", err)
 	}
 	defer outFile.Close()
-	io.Copy(os.Stdout, outFile)
+	_, _ = io.Copy(os.Stdout, outFile)
 }
 
 func runDedupMode(reg *codec.Registry, opts *options) {
@@ -344,7 +344,7 @@ func runDedupMode(reg *codec.Registry, opts *options) {
 	if opts.jsonOutput {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		enc.Encode(map[string]interface{}{
+		_ = enc.Encode(map[string]interface{}{
 			"scanned":    len(hashes),
 			"threshold":  threshold,
 			"groups":     groups,
@@ -389,7 +389,7 @@ func runContactSheetMode(reg *codec.Registry, opts *options) {
 			imgFile.Close()
 			continue
 		}
-		imgFile.Seek(0, 0)
+		_, _ = imgFile.Seek(0, 0)
 
 		dec, err := reg.Decoder(format)
 		if err != nil {
@@ -425,7 +425,7 @@ func runContactSheetMode(reg *codec.Registry, opts *options) {
 
 	outPath := "contact-sheet.jpg"
 	if opts.outputDir != "" {
-		os.MkdirAll(opts.outputDir, 0755)
+		_ = os.MkdirAll(opts.outputDir, 0755)
 		outPath = filepath.Join(opts.outputDir, outPath)
 	}
 
@@ -527,7 +527,7 @@ func runBatchMode(ctx context.Context, pipe *pipeline.Pipeline, reg *codec.Regis
 			}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			enc.Encode(items)
+			_ = enc.Encode(items)
 		} else {
 			for _, j := range jobs {
 				fmt.Printf("[dry-run] %s -> %s\n", j.InputPath, j.OutputPath)
@@ -609,7 +609,7 @@ func runBatchMode(ctx context.Context, pipe *pipeline.Pipeline, reg *codec.Regis
 	if opts.jsonOutput {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		enc.Encode(map[string]interface{}{
+		_ = enc.Encode(map[string]interface{}{
 			"converted":    succeeded,
 			"failed":       failed,
 			"total_input":  totalInputSize,

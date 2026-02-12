@@ -1,5 +1,75 @@
 # Pixshift Development Chat Log
 
+## Session 3: 2026-02-12 (v0.3.0)
+
+### Summary
+
+Added 12 new features to Pixshift using an agent team (4 parallel agents + 1 test agent) for implementation. All features tested, 60 new unit tests added (103 total), v0.3.0 released with Linux, macOS, and Windows binaries. Also dis-associated pixshift from the photo-converter project.
+
+### What Was Built
+
+**Wave 1 — Parallel (4 agents):**
+
+1. **Image Transform Package** (`internal/transform/`) — Three modules:
+   - `rotate.go` — `AutoRotate()` corrects orientation from EXIF values 1-8 (90CW, 90CCW, 180, flip H/V, and combinations). Pixel-level rotation with proper dimension swapping.
+   - `crop.go` — `Crop()` with explicit WxH dimensions, aspect ratio (`W:H` string), and gravity anchoring (center, north, south, east, west). Zero-copy SubImage path for `*image.RGBA`. Largest-fit calculation for aspect ratios.
+   - `watermark.go` — `ApplyWatermark()` with `basicfont.Face7x13` text rendering, dark background pad, configurable position (5 options) and opacity (0-1). 10px margin from edges.
+
+2. **Tree View + Presets** (`internal/tree/`, `internal/preset/`) —
+   - `tree.go` — `Print()` renders directory tree with box-drawing characters (`├── └──`), filters to supported image files only, shows file sizes and format labels, respects `MaxDepth`, hides empty directories.
+   - `preset.go` — 4 built-in presets: `web` (WebP/q85/1920px/strip), `thumbnail` (JPEG/q80/300px/strip), `print` (TIFF/q100/preserve), `archive` (PNG/q100/preserve). Returns copies to prevent mutation.
+
+3. **Dedup + SSIM** (`internal/dedup/`, `internal/ssim/`) —
+   - `dedup.go` — Perceptual image hashing via dHash (9x8 grayscale, adjacent pixel comparison). `DHash()`, `HammingDistance()`, `IsDuplicate()`, `HashFile()`. NearestNeighbor scaling for speed.
+   - `ssim.go` — Structural Similarity Index with 8x8 sliding window. `Compare()`, `CompareFiles()`, `Rating()` (Excellent/Good/Acceptable/Poor/Bad). Auto-resizes mismatched dimensions with BiLinear scaling.
+
+4. **Contact Sheet + HTTP Server** (`internal/contact/`, `internal/server/`) —
+   - `contact.go` — `Generate()` creates thumbnail grid with configurable columns, thumb size, padding, background color, and labels. CatmullRom scaling, centered thumbnails, filename labels truncated to fit.
+   - `server.go` — HTTP REST API with 3 endpoints: `POST /convert` (multipart upload → converted file download), `GET /formats` (JSON list), `GET /health`. 50MB upload limit, temp file cleanup, graceful shutdown via context.
+
+**Wave 2 — Integration (sequential, touches shared files):**
+
+5. **Pipeline Changes** — Added auto-rotate, crop, and watermark steps to the pipeline flow: `detect → decode → auto-rotate → crop → resize → watermark → encode → metadata inject`. Added backup support (copies original to `.bak` before conversion). New `Job` fields: `AutoRotate`, `EXIFOrientation`, `CropWidth`, `CropHeight`, `CropAspectRatio`, `CropGravity`, `WatermarkText`, `WatermarkPos`, `WatermarkOpacity`, `BackupOriginal`.
+
+6. **CLI Additions** — 20+ new flags across 4 categories:
+   - **Transforms**: `--auto-rotate`, `--crop WxH`, `--crop-ratio W:H`, `--crop-gravity`, `--watermark`, `--watermark-pos`, `--watermark-opacity`
+   - **Analysis modes**: `--tree`, `--dedup`, `--dedup-threshold`, `--ssim file1 file2`, `--contact-sheet`, `--contact-cols`, `--contact-size`
+   - **Workflow**: `--preset web|thumbnail|print|archive`, `--backup`, `--json`, stdin/stdout via `-`
+   - **Server**: `serve [addr]` subcommand (default `:8080`)
+
+**Wave 3 — Testing (1 agent):**
+
+7. **60 New Unit Tests** across 9 test files (103 total):
+   - `transform/rotate_test.go` (12 tests) — All orientations 0-8, pixel mapping, square images
+   - `transform/crop_test.go` (17 tests) — Explicit dims, aspect ratio, gravity, SubImage path, no-op, clamping
+   - `transform/watermark_test.go` (12 tests) — Empty text, opacity bounds, all 5 positions, pixel verification
+   - `tree/tree_test.go` (12 tests) — Box-drawing chars, file filtering, ShowSize/ShowFormat, MaxDepth, errors
+   - `preset/preset_test.go` (9 tests) — All 4 presets, unknown error, copy safety, List sorting
+   - `dedup/dedup_test.go` (10 tests) — Identical/different hashes, HammingDistance, threshold, determinism
+   - `ssim/ssim_test.go` (14 tests) — Identical/different images, ratings, boundary values, symmetry
+   - `contact/contact_test.go` (11 tests) — Grid dimensions, custom options, labels, empty input
+   - `server/server_test.go` (13 tests) — Health, formats, convert with valid JPEG, error cases, integration
+
+### CI Issue Resolved
+
+- **Lint errors on first push**: `errcheck` flagged unchecked `json.Encode()`, `io.Copy()`, `Seek()`, `MkdirAll()`, `WriteField()`, `Write()` calls, and `unused` flagged an unused `margin` const and `subImager` type. Fixed by adding `_ =` / `_, _ =` assignments and removing unused declarations.
+
+### Release
+
+- Tagged and released **v0.3.0** with 3 platform binaries: `pixshift-linux-amd64`, `pixshift-darwin-arm64`, `pixshift-windows-amd64.exe`.
+- Updated CHANGELOG.md, README.md with all new features.
+
+### Project Cleanup
+
+- Removed leftover `pixshift` binary from the `photo-converter` directory.
+- Dis-associated pixshift from photo-converter — future sessions should be started from the pixshift directory directly.
+
+### File Count
+
+51 Go source files (17 test files), 3,593 new lines added.
+
+---
+
 ## Session 2: 2026-02-12 (v0.2.0)
 
 ### Summary

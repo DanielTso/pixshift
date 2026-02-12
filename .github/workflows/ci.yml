@@ -26,7 +26,7 @@ jobs:
         if: matrix.os == 'linux'
         run: sudo apt-get update && sudo apt-get install -y libwebp-dev
       - name: Install dependencies (macOS)
-        if: matrix.os == 'macos'
+        if: runner.os == 'macOS'
         run: brew install webp
       - name: Test
         run: go test ./...

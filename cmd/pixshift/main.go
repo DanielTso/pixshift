@@ -460,7 +460,7 @@ func collectDir(dir string, recursive bool) []string {
 		}
 		return nil
 	}
-	filepath.Walk(dir, walkFn)
+	_ = filepath.Walk(dir, walkFn)
 	return files
 }
 

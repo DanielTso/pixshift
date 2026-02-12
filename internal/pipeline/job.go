@@ -14,6 +14,18 @@ type Job struct {
 	Width            int
 	Height           int
 	MaxDim           int
+
+	// v0.3.0 fields
+	AutoRotate       bool
+	EXIFOrientation  int
+	CropWidth        int
+	CropHeight       int
+	CropAspectRatio  string
+	CropGravity      string
+	WatermarkText    string
+	WatermarkPos     string
+	WatermarkOpacity float64
+	BackupOriginal   bool
 }
 
 // Result holds the outcome of a conversion job.

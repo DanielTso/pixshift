@@ -1,6 +1,69 @@
 # Pixshift Development Chat Log
 
-## Session: 2026-02-12
+## Session 2: 2026-02-12 (v0.2.0)
+
+### Summary
+
+Added 11 new features to Pixshift using an agent team (4 parallel agents) for implementation. All features tested, 43 unit tests added, v0.2.0 released with Linux, macOS, and Windows binaries.
+
+### What Was Built
+
+**Wave 1 — Parallel (3 agents):**
+
+1. **Image Resize Package** (`internal/resize/`) — `Resize()` function using `golang.org/x/image/draw` with CatmullRom interpolation. Supports width-only, height-only, max-dimension, and exact sizing. Preserves aspect ratio, no upscaling.
+
+2. **Shell Completions** (`internal/completion/`) — `GenerateBash()`, `GenerateZsh()`, `GenerateFish()` generating full completion scripts for all flags, format values, and file arguments.
+
+3. **Windows CI + Homebrew** — Added `windows-amd64` target to release workflow using MSYS2/MinGW for CGO. Created `Formula/pixshift.rb` Homebrew formula for binary installs.
+
+**Wave 2 — Integration (sequential, touches shared files):**
+
+4. **Pipeline Changes** — `Execute()` now returns `(inputSize, outputSize, error)`. Added resize step between decode and encode. Added `StripMetadata`, `Width`, `Height`, `MaxDim` fields to `Job`. Added `InputSize`, `OutputSize` to `Result`.
+
+5. **File Size Reporting** — Human-readable sizes per file and total savings summary: `photo.heic (4.2 MB) -> photo.webp (890 KB) [79% smaller]`.
+
+6. **Progress Bar** — Added `schollz/progressbar/v3` dependency. Non-verbose batch mode shows a progress bar instead of per-file output.
+
+7. **Strip Metadata** (`-s`/`--strip-metadata`) — Mutually exclusive with `-m`. Skips EXIF extraction/injection entirely.
+
+8. **Output Naming Templates** (`--template`) — Placeholders `{name}`, `{ext}`, `{format}` for custom output filenames.
+
+9. **Config Auto-Discovery** — Checks `./pixshift.yaml`, `./pixshift.yml`, `~/.config/pixshift/config.yaml`, `~/.config/pixshift/config.yml` when no `-c` flag is set.
+
+10. **Directory Structure Preservation** — When using `-o` with `-r`, mirrors input folder hierarchy in the output directory.
+
+11. **Shell Completion Flag** (`--completion bash|zsh|fish`) — Prints completion script and exits.
+
+**Wave 3 — Testing (1 agent):**
+
+12. **43 Unit Tests** across 8 test files:
+    - `codec/codec_test.go` — Format constants, extensions, IsRAW
+    - `codec/detect_test.go` — Magic byte detection for JPEG, PNG, GIF, BMP, WebP, TIFF, extension fallback
+    - `codec/roundtrip_test.go` — Encode/decode round-trips for JPEG, PNG, GIF, BMP, TIFF; quality size test
+    - `resize/resize_test.go` — Width, height, max-dim, both, no-op, no-upscale, portrait
+    - `pipeline/pipeline_test.go` — JPEG→PNG conversion, resize integration, error handling
+    - `rules/config_test.go` — Valid parsing, invalid formats, missing output
+    - `rules/engine_test.go` — Format match, glob match, no-match, first-match-wins, quality fallback
+    - `metadata/metadata_test.go` — HasEXIF edge cases (nil, empty, valid)
+
+### CI/Release Issues Resolved
+
+- **Windows CGO build**: Git Bash on Windows can't see MSYS2 MinGW GCC. Fixed by splitting into `Build (Unix)` and `Build (Windows)` steps with `shell: msys2 {0}` and `path-type: inherit`.
+- **Release continues on failure**: Added `if: ${{ !cancelled() }}` to release job so Linux/macOS binaries ship even if Windows fails.
+
+### Release
+
+- Tagged and released **v0.2.0** with 3 platform binaries: `pixshift-linux-amd64`, `pixshift-darwin-arm64`, `pixshift-windows-amd64.exe`.
+- Updated CHANGELOG.md, README.md with all new features.
+- Binary installed to `~/.local/bin/pixshift`.
+
+### File Count
+
+30 Go source files (8 test files), 1,541 new lines added.
+
+---
+
+## Session 1: 2026-02-12 (v0.1.0)
 
 ### Summary
 

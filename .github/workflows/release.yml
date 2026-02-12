@@ -47,17 +47,10 @@ jobs:
         with:
           msystem: MINGW64
           install: mingw-w64-x86_64-gcc mingw-w64-x86_64-libwebp
+          path-type: inherit
 
-      - name: Set Windows CGO env
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          echo "CGO_ENABLED=1" >> $GITHUB_ENV
-          echo "CC=$(cygpath -w /mingw64/bin/gcc.exe)" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/mingw64/lib/pkgconfig" >> $GITHUB_ENV
-          echo "PATH=/mingw64/bin:$PATH" >> $GITHUB_ENV
-
-      - name: Build
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
         env:
           CGO_ENABLED: '1'
         run: |
@@ -70,6 +63,21 @@ jobs:
           go build -ldflags "${LDFLAGS}" -o pixshift-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} ./cmd/pixshift
         shell: bash
 
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          export CGO_ENABLED=1
+          export CC=gcc
+          export PATH="/mingw64/bin:$PATH"
+          VERSION=${GITHUB_REF_NAME}
+          COMMIT=$(git rev-parse --short HEAD)
+          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          LDFLAGS="-X github.com/DanielTso/pixshift/internal/version.Version=${VERSION} \
+                   -X github.com/DanielTso/pixshift/internal/version.Commit=${COMMIT} \
+                   -X github.com/DanielTso/pixshift/internal/version.Date=${DATE}"
+          go build -ldflags "${LDFLAGS}" -o pixshift-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} ./cmd/pixshift
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -79,6 +87,7 @@ jobs:
   release:
     name: Create Release
     needs: build
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

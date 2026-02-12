@@ -70,6 +70,23 @@ type options struct {
 	contactCols      int
 	contactSize      int
 	serveAddr        string
+
+	// v0.4.0 fields
+	grayscale      bool
+	sepia          float64
+	brightness     float64
+	contrast       float64
+	sharpen        bool
+	blur           float64
+	invert         bool
+	progressive    bool
+	pngCompression int
+	webpMethod     int
+	lossless       bool
+	watermarkSize  float64
+	watermarkColor string
+	watermarkBg    string
+	interpolation  string
 }
 
 func main() {
@@ -123,6 +140,15 @@ func main() {
 		if !opts.metadata && !opts.stripMetadata {
 			opts.metadata = p.PreserveMetadata
 			opts.stripMetadata = p.StripMetadata
+		}
+		if p.Grayscale {
+			opts.grayscale = true
+		}
+		if p.Sharpen {
+			opts.sharpen = true
+		}
+		if p.AutoRotate {
+			opts.autoRotate = true
 		}
 	}
 
@@ -193,6 +219,11 @@ func main() {
 		opts.configFile = discoverConfig(opts.verbose)
 	}
 
+	// Load custom presets from config (if any) before rules mode
+	if opts.configFile != "" {
+		loadPresetsFromConfig(opts.configFile)
+	}
+
 	// Rules mode
 	if opts.configFile != "" {
 		runRulesMode(ctx, pipe, registry, opts)
@@ -247,25 +278,8 @@ func runStdinMode(pipe *pipeline.Pipeline, reg *codec.Registry, outputFormat cod
 	defer os.Remove(tmpOut.Name())
 	tmpOut.Close()
 
-	job := pipeline.Job{
-		InputPath:        tmpIn.Name(),
-		OutputPath:       tmpOut.Name(),
-		OutputFormat:     outputFormat,
-		Quality:          opts.quality,
-		PreserveMetadata: opts.metadata,
-		StripMetadata:    opts.stripMetadata,
-		Width:            opts.width,
-		Height:           opts.height,
-		MaxDim:           opts.maxDim,
-		AutoRotate:       opts.autoRotate,
-		CropWidth:        opts.cropWidth,
-		CropHeight:       opts.cropHeight,
-		CropAspectRatio:  opts.cropRatio,
-		CropGravity:      opts.cropGravity,
-		WatermarkText:    opts.watermarkText,
-		WatermarkPos:     opts.watermarkPos,
-		WatermarkOpacity: opts.watermarkOpacity,
-	}
+	job := buildJob(opts, tmpIn.Name(), "", outputFormat, "")
+	job.OutputPath = tmpOut.Name()
 
 	if _, _, err := pipe.Execute(job); err != nil {
 		fatal("convert: %v", err)
@@ -487,27 +501,8 @@ func runBatchMode(ctx context.Context, pipe *pipeline.Pipeline, reg *codec.Regis
 			}
 		}
 
-		jobs = append(jobs, pipeline.Job{
-			InputPath:        f,
-			OutputPath:       outPath,
-			InputFormat:      inputFormat,
-			OutputFormat:     outputFormat,
-			Quality:          opts.quality,
-			PreserveMetadata: opts.metadata,
-			StripMetadata:    opts.stripMetadata,
-			Width:            opts.width,
-			Height:           opts.height,
-			MaxDim:           opts.maxDim,
-			AutoRotate:       opts.autoRotate,
-			CropWidth:        opts.cropWidth,
-			CropHeight:       opts.cropHeight,
-			CropAspectRatio:  opts.cropRatio,
-			CropGravity:      opts.cropGravity,
-			WatermarkText:    opts.watermarkText,
-			WatermarkPos:     opts.watermarkPos,
-			WatermarkOpacity: opts.watermarkOpacity,
-			BackupOriginal:   opts.backup,
-		})
+		job := buildJob(opts, f, outPath, outputFormat, inputFormat)
+		jobs = append(jobs, job)
 	}
 
 	if len(jobs) == 0 {
@@ -589,11 +584,11 @@ func runBatchMode(ctx context.Context, pipe *pipeline.Pipeline, reg *codec.Regis
 				totalOutputSize += r.OutputSize
 				if opts.jsonOutput {
 					jsonResults = append(jsonResults, map[string]interface{}{
-						"input":      r.Job.InputPath,
-						"output":     r.Job.OutputPath,
-						"input_size": r.InputSize,
+						"input":       r.Job.InputPath,
+						"output":      r.Job.OutputPath,
+						"input_size":  r.InputSize,
 						"output_size": r.OutputSize,
-						"status":     "ok",
+						"status":      "ok",
 					})
 				} else {
 					fmt.Printf("[%d/%d] %s (%s) -> %s (%s) [%s]\n",
@@ -730,20 +725,8 @@ func runRulesMode(ctx context.Context, pipe *pipeline.Pipeline, reg *codec.Regis
 			continue
 		}
 
-		// Apply resize, transform, and strip settings
-		job.Width = opts.width
-		job.Height = opts.height
-		job.MaxDim = opts.maxDim
-		job.StripMetadata = opts.stripMetadata
-		job.AutoRotate = opts.autoRotate
-		job.CropWidth = opts.cropWidth
-		job.CropHeight = opts.cropHeight
-		job.CropAspectRatio = opts.cropRatio
-		job.CropGravity = opts.cropGravity
-		job.WatermarkText = opts.watermarkText
-		job.WatermarkPos = opts.watermarkPos
-		job.WatermarkOpacity = opts.watermarkOpacity
-		job.BackupOriginal = opts.backup
+		// Apply resize, transform, and strip settings from CLI
+		applyOptsToJob(opts, job)
 
 		if !opts.overwrite {
 			if _, err := os.Stat(job.OutputPath); err == nil {
@@ -1057,6 +1040,115 @@ func parseArgs(args []string) *options {
 			}
 			opts.contactSize = s
 			i += 2
+		case "--grayscale":
+			opts.grayscale = true
+			i++
+		case "--sepia":
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				s, err := strconv.ParseFloat(args[i+1], 64)
+				if err != nil || s < 0 || s > 1 {
+					fatal("sepia intensity must be a number between 0 and 1")
+				}
+				opts.sepia = s
+				i += 2
+			} else {
+				opts.sepia = 0.8
+				i++
+			}
+		case "--brightness":
+			if i+1 >= len(args) {
+				fatal("missing value for %s", args[i])
+			}
+			b, err := strconv.ParseFloat(args[i+1], 64)
+			if err != nil || b < -100 || b > 100 {
+				fatal("brightness must be a number between -100 and 100")
+			}
+			opts.brightness = b
+			i += 2
+		case "--contrast":
+			if i+1 >= len(args) {
+				fatal("missing value for %s", args[i])
+			}
+			c, err := strconv.ParseFloat(args[i+1], 64)
+			if err != nil || c < -100 || c > 100 {
+				fatal("contrast must be a number between -100 and 100")
+			}
+			opts.contrast = c
+			i += 2
+		case "--sharpen":
+			opts.sharpen = true
+			i++
+		case "--blur":
+			if i+1 >= len(args) {
+				fatal("missing value for %s", args[i])
+			}
+			bl, err := strconv.ParseFloat(args[i+1], 64)
+			if err != nil || bl < 0 {
+				fatal("blur radius must be a non-negative number")
+			}
+			opts.blur = bl
+			i += 2
+		case "--invert":
+			opts.invert = true
+			i++
+		case "--progressive":
+			opts.progressive = true
+			i++
+		case "--png-compression":
+			if i+1 >= len(args) {
+				fatal("missing value for %s", args[i])
+			}
+			pc, err := strconv.Atoi(args[i+1])
+			if err != nil || pc < 0 || pc > 3 {
+				fatal("png-compression must be 0-3")
+			}
+			opts.pngCompression = pc
+			i += 2
+		case "--webp-method":
+			if i+1 >= len(args) {
+				fatal("missing value for %s", args[i])
+			}
+			wm, err := strconv.Atoi(args[i+1])
+			if err != nil || wm < 0 || wm > 6 {
+				fatal("webp-method must be 0-6")
+			}
+			opts.webpMethod = wm
+			i += 2
+		case "--lossless":
+			opts.lossless = true
+			i++
+		case "--watermark-size":
+			if i+1 >= len(args) {
+				fatal("missing value for %s", args[i])
+			}
+			ws, err := strconv.ParseFloat(args[i+1], 64)
+			if err != nil || ws <= 0 {
+				fatal("watermark-size must be a positive number")
+			}
+			opts.watermarkSize = ws
+			i += 2
+		case "--watermark-color":
+			if i+1 >= len(args) {
+				fatal("missing value for %s", args[i])
+			}
+			opts.watermarkColor = args[i+1]
+			i += 2
+		case "--watermark-bg":
+			if i+1 >= len(args) {
+				fatal("missing value for %s", args[i])
+			}
+			opts.watermarkBg = args[i+1]
+			i += 2
+		case "--interpolation":
+			if i+1 >= len(args) {
+				fatal("missing value for %s", args[i])
+			}
+			interp := strings.ToLower(args[i+1])
+			if interp != "nearest" && interp != "bilinear" && interp != "catmullrom" {
+				fatal("interpolation must be nearest, bilinear, or catmullrom")
+			}
+			opts.interpolation = interp
+			i += 2
 		case "serve":
 			addr := ":8080"
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
@@ -1298,11 +1390,30 @@ Image transforms:
       --watermark <text>     Add text watermark
       --watermark-pos <pos>  Watermark position: bottom-right, bottom-left, top-right, top-left, center
       --watermark-opacity <N> Watermark opacity 0.0-1.0 (default: 0.5)
+      --watermark-size <N>   Watermark font scale (default: 1.0, e.g. 3.0 = 3x)
+      --watermark-color <hex> Watermark text color (default: #FFFFFF)
+      --watermark-bg <hex>   Watermark background color (default: #000000)
+
+Filters:
+      --grayscale            Convert to grayscale
+      --sepia [intensity]    Apply sepia tone (default: 0.8, range: 0.0-1.0)
+      --brightness <N>       Adjust brightness (-100 to +100)
+      --contrast <N>         Adjust contrast (-100 to +100)
+      --sharpen              Apply sharpen filter
+      --blur <radius>        Apply blur filter (radius in pixels)
+      --invert               Invert colors
 
 Resize:
       --width <N>           Target width (preserves aspect ratio)
       --height <N>          Target height (preserves aspect ratio)
       --max-dim <N>         Max dimension (scale to fit)
+      --interpolation <m>   Resize method: nearest, bilinear, catmullrom (default)
+
+Encoding options:
+      --progressive          JPEG progressive encoding (reserved for future encoder)
+      --png-compression <N>  PNG compression: 0=default, 1=none, 2=fast, 3=best
+      --webp-method <N>     WebP encoding method: 0-6 (0=fast, 6=best)
+      --lossless             WebP lossless mode
 
 Analysis tools:
       --tree                Show directory tree of supported images
@@ -1335,6 +1446,7 @@ Presets:
   thumbnail   JPEG, q80, max 300px, strip metadata
   print       TIFF, q100, preserve metadata
   archive     PNG, q100, preserve metadata
+  (custom presets can be defined in config YAML under "presets:" section)
 
 Examples:
   pixshift photo.heic                            Convert HEIC to JPEG (default)
@@ -1344,6 +1456,10 @@ Examples:
   pixshift --auto-rotate -f jpg photo.heic       Auto-rotate from EXIF
   pixshift --crop-ratio 16:9 -f webp photo.jpg   Crop to 16:9
   pixshift --watermark "© 2026" -f jpg photos/   Add watermark
+  pixshift --grayscale --sharpen -f webp photo.jpg Apply filters
+  pixshift --watermark "Test" --watermark-size 3 --watermark-color "#FF0000" -f jpg photo.jpg
+  pixshift --png-compression 3 -f png photo.jpg  Best PNG compression
+  pixshift --lossless -f webp photo.jpg           Lossless WebP
   pixshift --tree ~/Pictures                     Show image directory tree
   pixshift --dedup ~/Pictures                    Find duplicate images
   pixshift --ssim original.jpg compressed.jpg    Compare image quality
@@ -1353,6 +1469,111 @@ Examples:
   pixshift serve :9090                           Start HTTP server on port 9090
   cat photo.heic | pixshift -f webp - > out.webp Stdin/stdout pipeline
 `)
+}
+
+// loadPresetsFromConfig reads custom presets from a config file.
+func loadPresetsFromConfig(path string) {
+	cfg, err := rules.LoadConfig(path)
+	if err != nil {
+		return // Non-fatal: config may not be readable for presets only
+	}
+	if len(cfg.Presets) > 0 {
+		presetMap := make(map[string]*preset.Preset, len(cfg.Presets))
+		for name, pc := range cfg.Presets {
+			presetMap[name] = &preset.Preset{
+				Name:             name,
+				Format:           pc.Format,
+				Quality:          pc.Quality,
+				MaxDim:           pc.MaxDim,
+				Width:            pc.Width,
+				Height:           pc.Height,
+				StripMetadata:    pc.StripMetadata,
+				PreserveMetadata: pc.PreserveMetadata,
+				Grayscale:        pc.Grayscale,
+				Sharpen:          pc.Sharpen,
+				AutoRotate:       pc.AutoRotate,
+			}
+		}
+		preset.LoadCustomPresets(presetMap)
+	}
+}
+
+// buildJob creates a pipeline.Job from CLI options.
+func buildJob(opts *options, inputPath, outputPath string, outputFormat codec.Format, inputFormat codec.Format) pipeline.Job {
+	return pipeline.Job{
+		InputPath:        inputPath,
+		OutputPath:       outputPath,
+		InputFormat:      inputFormat,
+		OutputFormat:     outputFormat,
+		Quality:          opts.quality,
+		PreserveMetadata: opts.metadata,
+		StripMetadata:    opts.stripMetadata,
+		Width:            opts.width,
+		Height:           opts.height,
+		MaxDim:           opts.maxDim,
+		AutoRotate:       opts.autoRotate,
+		CropWidth:        opts.cropWidth,
+		CropHeight:       opts.cropHeight,
+		CropAspectRatio:  opts.cropRatio,
+		CropGravity:      opts.cropGravity,
+		WatermarkText:    opts.watermarkText,
+		WatermarkPos:     opts.watermarkPos,
+		WatermarkOpacity: opts.watermarkOpacity,
+		WatermarkSize:    opts.watermarkSize,
+		WatermarkColor:   opts.watermarkColor,
+		WatermarkBg:      opts.watermarkBg,
+		BackupOriginal:   opts.backup,
+		Grayscale:        opts.grayscale,
+		Sepia:            opts.sepia,
+		Brightness:       opts.brightness,
+		Contrast:         opts.contrast,
+		Sharpen:          opts.sharpen,
+		Blur:             opts.blur,
+		Invert:           opts.invert,
+		Interpolation:    opts.interpolation,
+		EncodeOpts: codec.EncodeOptions{
+			Quality:     opts.quality,
+			Progressive: opts.progressive,
+			Compression: opts.pngCompression,
+			WebPMethod:  opts.webpMethod,
+			Lossless:    opts.lossless,
+		},
+	}
+}
+
+// applyOptsToJob applies CLI options to a job (used in rules mode where job is pre-built).
+func applyOptsToJob(opts *options, job *pipeline.Job) {
+	job.Width = opts.width
+	job.Height = opts.height
+	job.MaxDim = opts.maxDim
+	job.StripMetadata = opts.stripMetadata
+	job.AutoRotate = opts.autoRotate
+	job.CropWidth = opts.cropWidth
+	job.CropHeight = opts.cropHeight
+	job.CropAspectRatio = opts.cropRatio
+	job.CropGravity = opts.cropGravity
+	job.WatermarkText = opts.watermarkText
+	job.WatermarkPos = opts.watermarkPos
+	job.WatermarkOpacity = opts.watermarkOpacity
+	job.WatermarkSize = opts.watermarkSize
+	job.WatermarkColor = opts.watermarkColor
+	job.WatermarkBg = opts.watermarkBg
+	job.BackupOriginal = opts.backup
+	job.Grayscale = opts.grayscale
+	job.Sepia = opts.sepia
+	job.Brightness = opts.brightness
+	job.Contrast = opts.contrast
+	job.Sharpen = opts.sharpen
+	job.Blur = opts.blur
+	job.Invert = opts.invert
+	job.Interpolation = opts.interpolation
+	job.EncodeOpts = codec.EncodeOptions{
+		Quality:     opts.quality,
+		Progressive: opts.progressive,
+		Compression: opts.pngCompression,
+		WebPMethod:  opts.webpMethod,
+		Lossless:    opts.lossless,
+	}
 }
 
 func fatal(format string, args ...interface{}) {

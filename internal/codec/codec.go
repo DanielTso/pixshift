@@ -35,6 +35,22 @@ type Encoder interface {
 	Format() Format
 }
 
+// EncodeOptions holds format-specific encoding parameters.
+type EncodeOptions struct {
+	Quality     int
+	Progressive bool   // JPEG: progressive encoding (reserved for future encoder)
+	Subsample   string // JPEG: chroma subsampling "444", "422", "420" (reserved)
+	Compression int    // PNG: 0=default, 1=none, 2=fast, 3=best
+	WebPMethod  int    // WebP: encoding method 0-6 (speed vs quality)
+	Lossless    bool   // WebP: lossless mode
+}
+
+// AdvancedEncoder extends Encoder with format-specific encoding options.
+type AdvancedEncoder interface {
+	Encoder
+	EncodeWithOptions(w io.Writer, img image.Image, opts EncodeOptions) error
+}
+
 // IsRAW returns true if the format is a RAW camera format.
 func IsRAW(f Format) bool {
 	switch f {

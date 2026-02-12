@@ -8,12 +8,13 @@ import (
 
 // ResizeOptions controls how an image is resized.
 type ResizeOptions struct {
-	Width  int // Target width. If Height is 0, aspect ratio is preserved.
-	Height int // Target height. If Width is 0, aspect ratio is preserved.
-	MaxDim int // Maximum dimension. Scales so max(width, height) <= MaxDim.
+	Width         int    // Target width. If Height is 0, aspect ratio is preserved.
+	Height        int    // Target height. If Width is 0, aspect ratio is preserved.
+	MaxDim        int    // Maximum dimension. Scales so max(width, height) <= MaxDim.
+	Interpolation string // "nearest", "bilinear", "catmullrom" (default)
 }
 
-// Resize scales img according to opts using high-quality CatmullRom interpolation.
+// Resize scales img according to opts using the selected interpolation method.
 // If no resize is needed (all options zero) or the image is already within the
 // target dimensions, the original image is returned unchanged.
 func Resize(img image.Image, opts ResizeOptions) image.Image {
@@ -33,8 +34,20 @@ func Resize(img image.Image, opts ResizeOptions) image.Image {
 	}
 
 	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
-	draw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
+	interpolator(opts.Interpolation).Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
 	return dst
+}
+
+// interpolator returns the draw.Interpolator for the given name.
+func interpolator(name string) draw.Interpolator {
+	switch name {
+	case "nearest":
+		return draw.NearestNeighbor
+	case "bilinear":
+		return draw.ApproxBiLinear
+	default:
+		return draw.CatmullRom
+	}
 }
 
 // targetDimensions computes the final width and height from the source

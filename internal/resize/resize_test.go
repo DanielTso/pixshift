@@ -74,6 +74,36 @@ func TestResize_NoUpscale(t *testing.T) {
 	}
 }
 
+func TestResize_Interpolation_Nearest(t *testing.T) {
+	img := testImage(800, 600)
+	result := Resize(img, ResizeOptions{Width: 400, Interpolation: "nearest"})
+	bounds := result.Bounds()
+	if bounds.Dx() != 400 || bounds.Dy() != 300 {
+		t.Errorf("Resize(nearest) on 800x600 = %dx%d, want 400x300",
+			bounds.Dx(), bounds.Dy())
+	}
+}
+
+func TestResize_Interpolation_Bilinear(t *testing.T) {
+	img := testImage(800, 600)
+	result := Resize(img, ResizeOptions{Width: 400, Interpolation: "bilinear"})
+	bounds := result.Bounds()
+	if bounds.Dx() != 400 || bounds.Dy() != 300 {
+		t.Errorf("Resize(bilinear) on 800x600 = %dx%d, want 400x300",
+			bounds.Dx(), bounds.Dy())
+	}
+}
+
+func TestResize_Interpolation_Default(t *testing.T) {
+	img := testImage(800, 600)
+	result := Resize(img, ResizeOptions{Width: 400, Interpolation: ""})
+	bounds := result.Bounds()
+	if bounds.Dx() != 400 || bounds.Dy() != 300 {
+		t.Errorf("Resize(default) on 800x600 = %dx%d, want 400x300",
+			bounds.Dx(), bounds.Dy())
+	}
+}
+
 func TestResize_MaxDim_Portrait(t *testing.T) {
 	img := testImage(600, 800)
 	result := Resize(img, ResizeOptions{MaxDim: 400})

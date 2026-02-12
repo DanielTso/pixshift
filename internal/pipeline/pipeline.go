@@ -53,9 +53,10 @@ func (p *Pipeline) Execute(job Job) (inputSize, outputSize int64, err error) {
 		}
 	}
 
-	// Extract metadata before decoding (if requested and not stripping)
+	// Extract metadata before decoding (for preservation or auto-rotate)
 	var meta *metadata.Metadata
-	if job.PreserveMetadata && !job.StripMetadata {
+	needMeta := (job.PreserveMetadata && !job.StripMetadata) || job.AutoRotate
+	if needMeta {
 		meta, err = metadata.Extract(f, inputFormat)
 		if err != nil {
 			// Non-fatal: warn but continue without metadata
@@ -66,6 +67,16 @@ func (p *Pipeline) Execute(job Job) (inputSize, outputSize int64, err error) {
 			return inputSize, 0, fmt.Errorf("seek: %w", err)
 		}
 	}
+
+	// Populate EXIF orientation from extracted metadata
+	if meta != nil {
+		if orient := meta.Orientation(); orient > 0 {
+			job.EXIFOrientation = orient
+		}
+	}
+
+	// Don't inject metadata if we only extracted it for auto-rotate
+	injectMeta := job.PreserveMetadata && !job.StripMetadata
 
 	// Get decoder
 	dec, err := p.Registry.Decoder(inputFormat)
@@ -97,9 +108,10 @@ func (p *Pipeline) Execute(job Job) (inputSize, outputSize int64, err error) {
 	// Resize if requested
 	if job.Width > 0 || job.Height > 0 || job.MaxDim > 0 {
 		img = resize.Resize(img, resize.ResizeOptions{
-			Width:  job.Width,
-			Height: job.Height,
-			MaxDim: job.MaxDim,
+			Width:         job.Width,
+			Height:        job.Height,
+			MaxDim:        job.MaxDim,
+			Interpolation: job.Interpolation,
 		})
 	}
 
@@ -109,7 +121,33 @@ func (p *Pipeline) Execute(job Job) (inputSize, outputSize int64, err error) {
 			Text:     job.WatermarkText,
 			Position: job.WatermarkPos,
 			Opacity:  job.WatermarkOpacity,
+			FontSize: job.WatermarkSize,
+			Color:    job.WatermarkColor,
+			BgColor:  job.WatermarkBg,
 		})
+	}
+
+	// Apply filters (fixed order: brightness → contrast → sharpen → blur → grayscale → sepia → invert)
+	if job.Brightness != 0 {
+		img = transform.Brightness(img, job.Brightness)
+	}
+	if job.Contrast != 0 {
+		img = transform.Contrast(img, job.Contrast)
+	}
+	if job.Sharpen {
+		img = transform.Sharpen(img)
+	}
+	if job.Blur > 0 {
+		img = transform.Blur(img, job.Blur)
+	}
+	if job.Grayscale {
+		img = transform.Grayscale(img)
+	}
+	if job.Sepia > 0 {
+		img = transform.Sepia(img, job.Sepia)
+	}
+	if job.Invert {
+		img = transform.Invert(img)
 	}
 
 	// Get encoder
@@ -125,17 +163,34 @@ func (p *Pipeline) Execute(job Job) (inputSize, outputSize int64, err error) {
 	}
 	defer out.Close()
 
-	// Encode
-	if err := enc.Encode(out, img, job.Quality); err != nil {
-		os.Remove(job.OutputPath)
-		return inputSize, 0, fmt.Errorf("encode %s: %w", job.OutputFormat, err)
+	// Encode (use AdvancedEncoder if available and options are set)
+	opts := job.EncodeOpts
+	useAdvanced := false
+	if _, ok := enc.(codec.AdvancedEncoder); ok {
+		if opts.Progressive || opts.Compression != 0 || opts.WebPMethod != 0 || opts.Lossless {
+			useAdvanced = true
+		}
+	}
+	if useAdvanced {
+		if opts.Quality == 0 {
+			opts.Quality = job.Quality
+		}
+		if err := enc.(codec.AdvancedEncoder).EncodeWithOptions(out, img, opts); err != nil {
+			os.Remove(job.OutputPath)
+			return inputSize, 0, fmt.Errorf("encode %s: %w", job.OutputFormat, err)
+		}
+	} else {
+		if err := enc.Encode(out, img, job.Quality); err != nil {
+			os.Remove(job.OutputPath)
+			return inputSize, 0, fmt.Errorf("encode %s: %w", job.OutputFormat, err)
+		}
 	}
 
 	// Close the file before metadata injection (needs to re-read/write)
 	out.Close()
 
-	// Inject metadata if available (and not stripping)
-	if !job.StripMetadata && meta.HasEXIF() {
+	// Inject metadata if available (and preservation was requested)
+	if injectMeta && meta.HasEXIF() {
 		if err := metadata.Inject(job.OutputPath, job.OutputFormat, meta); err != nil {
 			// Non-fatal: file was converted but metadata not preserved
 			return inputSize, 0, fmt.Errorf("metadata inject (file converted OK): %w", err)

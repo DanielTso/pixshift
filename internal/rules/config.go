@@ -10,7 +10,22 @@ import (
 
 // Config represents the top-level rules configuration file.
 type Config struct {
-	Rules []Rule `yaml:"rules"`
+	Rules   []Rule                   `yaml:"rules"`
+	Presets map[string]*PresetConfig `yaml:"presets,omitempty"`
+}
+
+// PresetConfig defines a custom preset in the config file.
+type PresetConfig struct {
+	Format           string `yaml:"format,omitempty"`
+	Quality          int    `yaml:"quality,omitempty"`
+	MaxDim           int    `yaml:"max_dim,omitempty"`
+	Width            int    `yaml:"width,omitempty"`
+	Height           int    `yaml:"height,omitempty"`
+	StripMetadata    bool   `yaml:"strip_metadata,omitempty"`
+	PreserveMetadata bool   `yaml:"preserve_metadata,omitempty"`
+	Grayscale        bool   `yaml:"grayscale,omitempty"`
+	Sharpen          bool   `yaml:"sharpen,omitempty"`
+	AutoRotate       bool   `yaml:"auto_rotate,omitempty"`
 }
 
 // Rule defines a single conversion rule.
@@ -24,8 +39,8 @@ type Rule struct {
 
 	// Output settings.
 	Output  string `yaml:"output"`            // output format (e.g., "webp", "jpg")
-	Quality int    `yaml:"quality,omitempty"`  // quality 1-100 (0 = default)
-	Dir     string `yaml:"dir,omitempty"`      // output directory override
+	Quality int    `yaml:"quality,omitempty"` // quality 1-100 (0 = default)
+	Dir     string `yaml:"dir,omitempty"`     // output directory override
 }
 
 // ParsedRule is a Rule with parsed format fields.
@@ -47,8 +62,8 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
-	if len(cfg.Rules) == 0 {
-		return nil, fmt.Errorf("config has no rules")
+	if len(cfg.Rules) == 0 && len(cfg.Presets) == 0 {
+		return nil, fmt.Errorf("config has no rules or presets")
 	}
 
 	return &cfg, nil

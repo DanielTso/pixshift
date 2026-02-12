@@ -25,7 +25,21 @@ type Job struct {
 	WatermarkText    string
 	WatermarkPos     string
 	WatermarkOpacity float64
+	WatermarkSize    float64
+	WatermarkColor   string
+	WatermarkBg      string
 	BackupOriginal   bool
+
+	// v0.4.0 fields
+	Grayscale     bool
+	Sepia         float64 // 0=off, 0.0-1.0 intensity
+	Brightness    float64 // -100 to +100
+	Contrast      float64 // -100 to +100
+	Sharpen       bool
+	Blur          float64 // 0=off, radius in pixels
+	Invert        bool
+	Interpolation string // "nearest", "bilinear", "catmullrom" (default)
+	EncodeOpts    codec.EncodeOptions
 }
 
 // Result holds the outcome of a conversion job.

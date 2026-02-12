@@ -142,6 +142,88 @@ func TestList_ContainsAllPresets(t *testing.T) {
 	}
 }
 
+func TestLoadCustomPresets(t *testing.T) {
+	defer ResetCustomPresets()
+
+	LoadCustomPresets(map[string]*Preset{
+		"social": {
+			Format:        "jpg",
+			Quality:       90,
+			MaxDim:        1080,
+			StripMetadata: true,
+			Grayscale:     true,
+		},
+	})
+
+	p, err := Get("social")
+	if err != nil {
+		t.Fatalf("Get(social): %v", err)
+	}
+	if p.Format != "jpg" {
+		t.Errorf("Format = %q, want %q", p.Format, "jpg")
+	}
+	if p.Quality != 90 {
+		t.Errorf("Quality = %d, want 90", p.Quality)
+	}
+	if !p.Grayscale {
+		t.Error("Grayscale should be true")
+	}
+}
+
+func TestCustomPresetOverridesBuiltin(t *testing.T) {
+	defer ResetCustomPresets()
+
+	LoadCustomPresets(map[string]*Preset{
+		"web": {
+			Format:  "jpg",
+			Quality: 70,
+		},
+	})
+
+	p, err := Get("web")
+	if err != nil {
+		t.Fatalf("Get(web): %v", err)
+	}
+	if p.Format != "jpg" {
+		t.Errorf("custom web Format = %q, want %q", p.Format, "jpg")
+	}
+	if p.Quality != 70 {
+		t.Errorf("custom web Quality = %d, want 70", p.Quality)
+	}
+}
+
+func TestListIncludesCustomPresets(t *testing.T) {
+	defer ResetCustomPresets()
+
+	LoadCustomPresets(map[string]*Preset{
+		"social": {Format: "jpg", Quality: 90},
+	})
+
+	names := List()
+	found := false
+	for _, n := range names {
+		if n == "social" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("List() should include custom preset 'social', got %v", names)
+	}
+}
+
+func TestResetCustomPresets(t *testing.T) {
+	LoadCustomPresets(map[string]*Preset{
+		"social": {Format: "jpg"},
+	})
+	ResetCustomPresets()
+
+	_, err := Get("social")
+	if err == nil {
+		t.Error("after reset, custom preset should not be found")
+	}
+}
+
 func TestGet_AllListedPresetsAreValid(t *testing.T) {
 	for _, name := range List() {
 		p, err := Get(name)

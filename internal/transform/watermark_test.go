@@ -156,6 +156,85 @@ func TestApplyWatermark_DifferentPositions_ProduceDifferentResults(t *testing.T)
 	}
 }
 
+func TestApplyWatermark_FontScale(t *testing.T) {
+	// Scale 2 should produce a larger watermark area than scale 1.
+	img1 := solidImage(400, 400, color.White)
+	out1 := ApplyWatermark(img1, WatermarkOptions{Text: "Scale", Opacity: 1.0, FontSize: 1.0})
+	img2 := solidImage(400, 400, color.White)
+	out2 := ApplyWatermark(img2, WatermarkOptions{Text: "Scale", Opacity: 1.0, FontSize: 3.0})
+
+	// Count non-white pixels in each.
+	count1 := countNonWhitePixels(out1)
+	count2 := countNonWhitePixels(out2)
+	if count2 <= count1 {
+		t.Errorf("FontSize 3.0 should produce more non-white pixels (%d) than 1.0 (%d)", count2, count1)
+	}
+}
+
+func TestApplyWatermark_CustomColor(t *testing.T) {
+	img := solidImage(200, 200, color.White)
+	out := ApplyWatermark(img, WatermarkOptions{
+		Text:    "Red",
+		Opacity: 1.0,
+		Color:   "#FF0000",
+		BgColor: "#00FF00",
+	})
+	b := out.Bounds()
+	if b.Dx() != 200 || b.Dy() != 200 {
+		t.Errorf("custom color: got %dx%d, want 200x200", b.Dx(), b.Dy())
+	}
+	// Check that at least some pixels are not white.
+	differs := false
+	for y := b.Min.Y; y < b.Max.Y && !differs; y++ {
+		for x := b.Min.X; x < b.Max.X && !differs; x++ {
+			r, g, bl, _ := out.At(x, y).RGBA()
+			if r != 0xFFFF || g != 0xFFFF || bl != 0xFFFF {
+				differs = true
+			}
+		}
+	}
+	if !differs {
+		t.Error("custom color watermark should produce visible pixels")
+	}
+}
+
+func TestParseHexColor(t *testing.T) {
+	fallback := color.RGBA{R: 0, G: 0, B: 0, A: 255}
+
+	tests := []struct {
+		input string
+		want  color.RGBA
+	}{
+		{"#FF0000", color.RGBA{R: 255, G: 0, B: 0, A: 255}},
+		{"00FF00", color.RGBA{R: 0, G: 255, B: 0, A: 255}},
+		{"#0000ff", color.RGBA{R: 0, G: 0, B: 255, A: 255}},
+		{"", fallback},
+		{"invalid", fallback},
+		{"#GG0000", fallback},
+	}
+
+	for _, tc := range tests {
+		got := ParseHexColor(tc.input, fallback)
+		if got != tc.want {
+			t.Errorf("ParseHexColor(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
+func countNonWhitePixels(img image.Image) int {
+	count := 0
+	b := img.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, _ := img.At(x, y).RGBA()
+			if r != 0xFFFF || g != 0xFFFF || bl != 0xFFFF {
+				count++
+			}
+		}
+	}
+	return count
+}
+
 func imagesEqual(a, b image.Image) bool {
 	ab := a.Bounds()
 	bb := b.Bounds()

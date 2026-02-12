@@ -1,0 +1,4 @@
+/pixshift
+/pixshift.exe
+dist/
+*.test

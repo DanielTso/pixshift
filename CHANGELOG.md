@@ -10,22 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2026-02-12
 
 ### Fixed
-- EXIF auto-rotate now works correctly — `Orientation()` method parses tag 0x0112 from raw EXIF bytes (LE/BE), and pipeline extracts metadata when `--auto-rotate` is used even without `--preserve-metadata`
-- Rotation performance rewritten with direct `Pix` byte slice operations instead of per-pixel `At()/Set()` calls
+- EXIF auto-rotate now works correctly — orientation is parsed from raw EXIF bytes (both little-endian and big-endian), and `--auto-rotate` no longer requires `--preserve-metadata`
+- Rotation transforms rewritten with direct pixel buffer operations for significantly improved performance
 
 ### Added
-- **Image filters** (`--grayscale`, `--sepia`, `--brightness`, `--contrast`, `--sharpen`, `--blur`, `--invert`) applied in fixed order after watermark step
-- **Format-specific encoding options**: `AdvancedEncoder` interface with `EncodeWithOptions`
-  - `--png-compression <0-3>` — PNG compression level (none/fast/best)
-  - `--webp-method <0-6>` — WebP encoding speed vs quality
+- **Image filters**: `--grayscale`, `--sepia`, `--brightness`, `--contrast`, `--sharpen`, `--blur`, `--invert` — applied in a fixed pipeline order after watermark
+- **Format-specific encoding options**:
+  - `--png-compression <0-3>` — PNG compression level (default/none/fast/best)
+  - `--webp-method <0-6>` — WebP encoding speed-quality tradeoff
   - `--lossless` — WebP lossless mode
   - `--progressive` — JPEG progressive encoding (reserved for future encoder)
-- **Enhanced watermarks**: font scaling (`--watermark-size`), custom text color (`--watermark-color`), background color (`--watermark-bg`) with hex color parsing
-- **Resize interpolation options** (`--interpolation nearest|bilinear|catmullrom`)
-- **User-defined presets** in YAML config (`presets:` section) that can override built-in presets
-- Preset fields extended with `grayscale`, `sharpen`, `auto_rotate` options
-- Shell completions updated with all v0.3.0 and v0.4.0 flags for bash, zsh, and fish, including value completions for `--preset`, `--crop-gravity`, `--watermark-pos`, `--interpolation`, `--png-compression`
-- New tests: EXIF orientation parsing (LE/BE), 7 image filters, watermark scaling/colors, resize interpolation, custom presets (~40 new tests)
+- **Enhanced watermarks**: font scaling (`--watermark-size`), text color (`--watermark-color`), background color (`--watermark-bg`) with hex color support
+- **Resize interpolation**: `--interpolation nearest|bilinear|catmullrom` for controlling resize quality
+- **User-defined presets** in YAML config (`presets:` section) — custom presets can override built-in ones and include filter/transform options (`grayscale`, `sharpen`, `auto_rotate`)
+- Shell completions updated with all v0.3.0 and v0.4.0 flags for bash, zsh, and fish, including value completions
+- ~40 new tests covering EXIF orientation, filters, watermark options, interpolation, and custom presets (~140 total)
 
 ## [0.3.0] - 2026-02-12
 

@@ -6,9 +6,11 @@ Universal image converter CLI. Convert between JPEG, PNG, GIF, WebP, TIFF, BMP, 
 
 - **Any-to-any conversion** between 10+ image formats
 - **Smart format detection** via magic bytes (not file extensions)
-- **Image transforms** — auto-rotate from EXIF, crop (dimensions or aspect ratio), text watermarks
-- **Image resizing** — scale by width, height, or max dimension with aspect ratio preservation
-- **Named presets** — `web`, `thumbnail`, `print`, `archive` with predefined settings
+- **Image transforms** — auto-rotate from EXIF, crop (dimensions or aspect ratio), text watermarks with font scaling and custom colors
+- **Image filters** — grayscale, sepia, brightness, contrast, sharpen, blur, invert
+- **Image resizing** — scale by width, height, or max dimension with selectable interpolation (nearest, bilinear, catmull-rom)
+- **Format-specific encoding** — PNG compression level, WebP method/lossless, JPEG progressive (reserved)
+- **Named presets** — built-in `web`, `thumbnail`, `print`, `archive` plus user-defined presets in YAML config
 - **Parallel processing** with configurable worker pool
 - **File size reporting** — see input/output sizes, compression ratios, and total savings
 - **Progress bar** — visual progress for batch conversions
@@ -89,6 +91,7 @@ pixshift -j 8 -f webp -o output/ photos/
 # Resize images
 pixshift --max-dim 1920 -f webp photos/        # Scale to fit 1920px
 pixshift --width 800 -f jpg -o thumbs/ photos/ # 800px-wide thumbnails
+pixshift --max-dim 1920 --interpolation nearest -f webp photos/  # Nearest-neighbor resize
 
 # Auto-rotate from EXIF orientation
 pixshift --auto-rotate -f jpg photo.heic
@@ -98,9 +101,18 @@ pixshift --crop 800x600 -f jpg photo.heic      # Exact dimensions
 pixshift --crop-ratio 16:9 -f webp photo.jpg   # Aspect ratio
 pixshift --crop-ratio 1:1 --crop-gravity north -f jpg photo.heic  # Square, top-anchored
 
+# Image filters
+pixshift --grayscale -f jpg photo.heic                 # Convert to grayscale
+pixshift --brightness 20 --contrast 30 -f webp photo.jpg  # Adjust brightness/contrast
+pixshift --sharpen -f png photo.jpg                    # Sharpen image
+pixshift --blur 2 -f jpg photo.heic                    # Gaussian blur (radius 2)
+pixshift --sepia 0.8 -f jpg photo.heic                 # Warm sepia tone
+pixshift --invert -f png photo.jpg                     # Invert colors
+
 # Add watermark
 pixshift --watermark "© 2026" -f jpg photos/
 pixshift --watermark "DRAFT" --watermark-pos center --watermark-opacity 0.3 -f png photo.jpg
+pixshift --watermark "PROOF" --watermark-size 3 --watermark-color "#FF0000" -f jpg photo.jpg
 
 # Preserve or strip EXIF metadata
 pixshift -m -f jpg photo.heic                  # Preserve EXIF
@@ -114,6 +126,11 @@ pixshift photo.CR2
 
 # Watch mode: auto-convert new files
 pixshift -w -f webp ~/Pictures/
+
+# Format-specific encoding options
+pixshift --png-compression 3 -f png photo.jpg           # Best PNG compression
+pixshift --webp-method 6 -f webp photo.jpg              # Best WebP quality (slower)
+pixshift --lossless -f webp photo.jpg                    # Lossless WebP
 
 # Rules mode from config file
 pixshift -c pixshift.yaml photos/
@@ -197,7 +214,7 @@ curl http://localhost:8080/health
 | `-s, --strip-metadata` | Strip all EXIF/GPS metadata |
 | `-w, --watch` | Watch mode |
 | `-c, --config` | Rules config file |
-| `--preset` | Named preset: `web`, `thumbnail`, `print`, `archive` |
+| `--preset` | Named preset: `web`, `thumbnail`, `print`, `archive` (or custom) |
 | `--template` | Output naming template (`{name}`, `{ext}`, `{format}`) |
 | `--overwrite` | Overwrite existing files |
 | `--dry-run` | Preview without converting |
@@ -215,9 +232,34 @@ curl http://localhost:8080/health
 | `--watermark` | Add text watermark |
 | `--watermark-pos` | Position: `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center` |
 | `--watermark-opacity` | Opacity 0.0-1.0 (default: 0.5) |
+| `--watermark-size` | Font scale factor (default: 1.0) |
+| `--watermark-color` | Text color as hex (default: `#FFFFFF`) |
+| `--watermark-bg` | Background color as hex (default: `#000000`) |
 | `--width` | Resize: target width (preserves aspect ratio) |
 | `--height` | Resize: target height (preserves aspect ratio) |
 | `--max-dim` | Resize: max dimension (scale to fit) |
+| `--interpolation` | Resize method: `nearest`, `bilinear`, `catmullrom` (default) |
+
+### Image Filters
+
+| Flag | Description |
+|------|-------------|
+| `--grayscale` | Convert to grayscale |
+| `--sepia` | Apply sepia tone (default intensity: 0.8) |
+| `--brightness` | Adjust brightness (-100 to +100) |
+| `--contrast` | Adjust contrast (-100 to +100) |
+| `--sharpen` | Apply sharpening filter |
+| `--blur` | Apply blur with radius in pixels |
+| `--invert` | Invert colors |
+
+### Encoding Options
+
+| Flag | Description |
+|------|-------------|
+| `--png-compression` | PNG compression: `0` default, `1` none, `2` fast, `3` best |
+| `--webp-method` | WebP method 0-6: speed vs quality tradeoff |
+| `--lossless` | WebP lossless encoding |
+| `--progressive` | JPEG progressive encoding (reserved for future encoder) |
 
 ### Analysis
 
@@ -242,6 +284,8 @@ curl http://localhost:8080/health
 
 ## Presets
 
+### Built-in
+
 | Preset | Format | Quality | Max Dim | Metadata |
 |--------|--------|---------|---------|----------|
 | `web` | WebP | 85 | 1920px | Strip |
@@ -249,11 +293,44 @@ curl http://localhost:8080/health
 | `print` | TIFF | 100 | - | Preserve |
 | `archive` | PNG | 100 | - | Preserve |
 
-## Rules Config
+### Custom presets
 
-Create a `pixshift.yaml` to define per-format conversion rules. Pixshift auto-discovers config files in the current directory or `~/.config/pixshift/`.
+Define your own presets in `pixshift.yaml`. Custom presets can override built-ins.
 
 ```yaml
+presets:
+  social:
+    format: jpg
+    quality: 90
+    max_dim: 1080
+    strip_metadata: true
+    grayscale: false
+
+  bw-archive:
+    format: png
+    quality: 100
+    grayscale: true
+    sharpen: true
+    auto_rotate: true
+```
+
+```bash
+pixshift --preset social -o output/ photos/
+pixshift --preset bw-archive -o output/ photos/
+```
+
+## Rules Config
+
+Create a `pixshift.yaml` to define per-format conversion rules and custom presets. Pixshift auto-discovers config files in the current directory or `~/.config/pixshift/`.
+
+```yaml
+presets:
+  social:
+    format: jpg
+    quality: 90
+    max_dim: 1080
+    strip_metadata: true
+
 rules:
   - name: heic-to-webp
     format: heic

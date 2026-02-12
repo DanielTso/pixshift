@@ -23,6 +23,10 @@ jobs:
             arch: arm64
             runner: macos-latest
             ext: ''
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+            ext: '.exe'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -36,6 +40,22 @@ jobs:
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: brew install webp
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-libwebp
+
+      - name: Set Windows CGO env
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          echo "CGO_ENABLED=1" >> $GITHUB_ENV
+          echo "CC=$(cygpath -w /mingw64/bin/gcc.exe)" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/mingw64/lib/pkgconfig" >> $GITHUB_ENV
+          echo "PATH=/mingw64/bin:$PATH" >> $GITHUB_ENV
 
       - name: Build
         env:

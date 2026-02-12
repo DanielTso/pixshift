@@ -47,8 +47,8 @@ func (pool *Pool) Run(ctx context.Context, jobs []Job) []Result {
 					return
 				default:
 				}
-				err := pool.pipeline.Execute(jobs[idx])
-				results[idx] = Result{Job: jobs[idx], Error: err}
+				inSize, outSize, err := pool.pipeline.Execute(jobs[idx])
+				results[idx] = Result{Job: jobs[idx], Error: err, InputSize: inSize, OutputSize: outSize}
 			}
 		}()
 	}
@@ -91,8 +91,8 @@ func (pool *Pool) RunWithCallback(ctx context.Context, jobs []Job, cb func(Resul
 					return
 				default:
 				}
-				err := pool.pipeline.Execute(jobs[idx])
-				r := Result{Job: jobs[idx], Error: err}
+				inSize, outSize, err := pool.pipeline.Execute(jobs[idx])
+				r := Result{Job: jobs[idx], Error: err, InputSize: inSize, OutputSize: outSize}
 				mu.Lock()
 				completed++
 				c := completed

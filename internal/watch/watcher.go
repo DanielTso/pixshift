@@ -149,9 +149,9 @@ func (w *Watcher) processFile(path string) {
 		PreserveMetadata: w.Metadata,
 	}
 
-	err = w.Pipeline.Execute(job)
+	inSize, outSize, err := w.Pipeline.Execute(job)
 	if w.OnConvert != nil {
-		w.OnConvert(pipeline.Result{Job: job, Error: err})
+		w.OnConvert(pipeline.Result{Job: job, Error: err, InputSize: inSize, OutputSize: outSize})
 	}
 }
 

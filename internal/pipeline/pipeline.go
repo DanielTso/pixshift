@@ -6,9 +6,10 @@ import (
 
 	"github.com/DanielTso/pixshift/internal/codec"
 	"github.com/DanielTso/pixshift/internal/metadata"
+	"github.com/DanielTso/pixshift/internal/resize"
 )
 
-// Pipeline executes the detect -> decode -> encode -> metadata inject flow.
+// Pipeline executes the detect -> decode -> resize -> encode -> metadata inject flow.
 type Pipeline struct {
 	Registry *codec.Registry
 }
@@ -18,12 +19,18 @@ func NewPipeline(reg *codec.Registry) *Pipeline {
 	return &Pipeline{Registry: reg}
 }
 
-// Execute runs a single conversion job.
-func (p *Pipeline) Execute(job Job) error {
+// Execute runs a single conversion job and returns file sizes.
+func (p *Pipeline) Execute(job Job) (inputSize, outputSize int64, err error) {
+	// Get input file size
+	info, statErr := os.Stat(job.InputPath)
+	if statErr == nil {
+		inputSize = info.Size()
+	}
+
 	// Open input file
 	f, err := os.Open(job.InputPath)
 	if err != nil {
-		return fmt.Errorf("open %s: %w", job.InputPath, err)
+		return inputSize, 0, fmt.Errorf("open %s: %w", job.InputPath, err)
 	}
 	defer f.Close()
 
@@ -32,13 +39,13 @@ func (p *Pipeline) Execute(job Job) error {
 	if inputFormat == "" {
 		inputFormat, err = codec.DetectFormat(f, job.InputPath)
 		if err != nil {
-			return fmt.Errorf("detect format: %w", err)
+			return inputSize, 0, fmt.Errorf("detect format: %w", err)
 		}
 	}
 
-	// Extract metadata before decoding (if requested)
+	// Extract metadata before decoding (if requested and not stripping)
 	var meta *metadata.Metadata
-	if job.PreserveMetadata {
+	if job.PreserveMetadata && !job.StripMetadata {
 		meta, err = metadata.Extract(f, inputFormat)
 		if err != nil {
 			// Non-fatal: warn but continue without metadata
@@ -46,51 +53,66 @@ func (p *Pipeline) Execute(job Job) error {
 		}
 		// Reset file position after metadata extraction
 		if _, err := f.Seek(0, 0); err != nil {
-			return fmt.Errorf("seek: %w", err)
+			return inputSize, 0, fmt.Errorf("seek: %w", err)
 		}
 	}
 
 	// Get decoder
 	dec, err := p.Registry.Decoder(inputFormat)
 	if err != nil {
-		return err
+		return inputSize, 0, err
 	}
 
 	// Decode
 	img, err := dec.Decode(f)
 	if err != nil {
-		return fmt.Errorf("decode %s: %w", inputFormat, err)
+		return inputSize, 0, fmt.Errorf("decode %s: %w", inputFormat, err)
+	}
+
+	// Resize if requested
+	if job.Width > 0 || job.Height > 0 || job.MaxDim > 0 {
+		img = resize.Resize(img, resize.ResizeOptions{
+			Width:  job.Width,
+			Height: job.Height,
+			MaxDim: job.MaxDim,
+		})
 	}
 
 	// Get encoder
 	enc, err := p.Registry.Encoder(job.OutputFormat)
 	if err != nil {
-		return err
+		return inputSize, 0, err
 	}
 
 	// Create output file
 	out, err := os.Create(job.OutputPath)
 	if err != nil {
-		return fmt.Errorf("create %s: %w", job.OutputPath, err)
+		return inputSize, 0, fmt.Errorf("create %s: %w", job.OutputPath, err)
 	}
 	defer out.Close()
 
 	// Encode
 	if err := enc.Encode(out, img, job.Quality); err != nil {
 		os.Remove(job.OutputPath)
-		return fmt.Errorf("encode %s: %w", job.OutputFormat, err)
+		return inputSize, 0, fmt.Errorf("encode %s: %w", job.OutputFormat, err)
 	}
 
 	// Close the file before metadata injection (needs to re-read/write)
 	out.Close()
 
-	// Inject metadata if available
-	if meta.HasEXIF() {
+	// Inject metadata if available (and not stripping)
+	if !job.StripMetadata && meta.HasEXIF() {
 		if err := metadata.Inject(job.OutputPath, job.OutputFormat, meta); err != nil {
 			// Non-fatal: file was converted but metadata not preserved
-			return fmt.Errorf("metadata inject (file converted OK): %w", err)
+			return inputSize, 0, fmt.Errorf("metadata inject (file converted OK): %w", err)
 		}
 	}
 
-	return nil
+	// Get output file size
+	outInfo, statErr := os.Stat(job.OutputPath)
+	if statErr == nil {
+		outputSize = outInfo.Size()
+	}
+
+	return inputSize, outputSize, nil
 }

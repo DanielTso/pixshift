@@ -5,10 +5,16 @@ go 1.24.7
 require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/kolesa-team/go-webp v1.0.5
+	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/vegidio/avif-go v0.0.0-20260201182506-481b88104109
 	github.com/vegidio/heif-go v0.0.0-20251219210713-e14a78e55c84
 	golang.org/x/image v0.36.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require golang.org/x/sys v0.13.0 // indirect
+require (
+	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
+	github.com/rivo/uniseg v0.4.7 // indirect
+	golang.org/x/sys v0.29.0 // indirect
+	golang.org/x/term v0.28.0 // indirect
+)

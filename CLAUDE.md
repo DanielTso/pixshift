@@ -19,7 +19,7 @@ go test ./internal/codec/...   # Run tests for a single package
 go test -run TestDetect ./internal/codec/...  # Run a single test
 ```
 
-CGO is required — the WebP, HEIC, AVIF, and JXL codecs use C libraries. On Linux, install `libwebp-dev`, `libjxl-dev`, and `libheif-dev` before building.
+Requires Go 1.24+ and CGO. The WebP, HEIC, AVIF, and JXL codecs use C libraries. On Linux, install `libwebp-dev`, `libjxl-dev`, and `libheif-dev` before building. All CGO codecs compile unconditionally (no build tags) — you cannot selectively disable them.
 
 ## Architecture
 
@@ -105,7 +105,7 @@ Parallel processing via a channel-based worker pool. Configurable via `-j` flag,
 
 ### Web frontend (`web/`)
 
-React 19 + Vite 6 + TypeScript + Tailwind CSS 4. Builds to `web/dist/` which is embedded in the Go binary via `web/embed.go` (`//go:embed all:dist`). Build with `make build-web`. The SPA is served by `spa.go` with index.html fallback for client-side routing.
+React 19 + Vite 6 + TypeScript + Tailwind CSS 4. Builds to `web/dist/` which is embedded in the Go binary via `web/embed.go` (`//go:embed all:dist`). Build with `make build-web`. The SPA is served by `spa.go` with index.html fallback for client-side routing. For frontend development, `npm run dev` in `web/` starts Vite with proxy rules that forward `/api` and `/internal` to `http://localhost:8080` (the Go backend).
 
 **Converter store** (`web/src/stores/converter.ts`): Zustand store with `FileEntry[]` array for batch upload support. Each entry tracks its own `id`, `file`, `preview`, `result`, `status` (pending/converting/done/error), `error`, sizes, and dimensions. `activeFileId` controls which file is shown in the preview pane. Conversion runs sequentially through all pending/error entries with per-file progress. Key components: `DropZone` (accepts multiple files, has compact variant for adding more), `FileQueue` (horizontal thumbnail strip with status overlays), `PreviewPane` (reads from active entry), `DownloadButton` (batch convert/download/retry actions).
 
@@ -136,6 +136,20 @@ Postgres schema in `migrations/001_initial.sql` and `002_monthly_api_usage.sql`.
 4. Add to `buildJob()` and `applyOptsToJob()` in `helpers.go`
 5. Add to `rules.Rule` struct and `Engine.Match()` for YAML rules support
 6. Add form field parsing in `server.go:handleConvert()` for HTTP API
+
+## Testing
+
+Tests generate all images in-memory (no testdata directory). Each test package has its own helper functions like `solidImage()`, `gradientImage()`, etc. Run uncached tests with `go test -count=1 ./...`.
+
+## Known gotchas
+
+### libjpeg ABI conflict
+
+heif-go and avif-go transitively link against libjpeg-turbo at a different ABI version than the system headers declare (headers say v80, runtime has v62). This means you **cannot** use go-libjpeg or any direct libjpeg-turbo CGO binding. The JPEG codec uses stdlib `image/jpeg` only, which produces baseline (not progressive) JPEG. The `--progressive` flag is accepted but silently falls back to baseline. See `internal/codec/jpeg.go` for details.
+
+### CGO transitive dependencies
+
+Adding new CGO codecs may conflict with the C libraries that heif-go and avif-go pull in at link time. Always test `make build` early when introducing new CGO dependencies.
 
 ## Build-time version injection
 

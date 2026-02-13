@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-02-13
+
+### Added
+- **Web application** — React SPA with drag-and-drop converter, format picker, transform panel, before/after preview, and download. Dark navy theme with cyan accents. Pages: Home, Dashboard, Pricing, Docs, Settings, Login/Signup
+- **Hosted API** — `POST /api/v1/convert` with API key authentication, tier-based usage limits, file size limits, and conversion tracking. `GET /api/v1/formats` for format discovery
+- **MCP server** — `pixshift mcp` starts a Model Context Protocol server on stdio with 4 tools: `convert_image`, `get_formats`, `analyze_image`, `compare_images`. Compatible with Claude Desktop and other MCP clients
+- **User accounts** — email/password signup and login with bcrypt hashing, session-based auth via HttpOnly cookies, Google OAuth integration
+- **API key management** — generate keys (`pxs_` prefix + 32 hex chars, SHA-256 hashed), list, revoke. Keys authenticate hosted API requests via `X-API-Key` header
+- **Stripe billing** — Free tier (20 conversions/day, 10 MB, 1 API key) and Pro tier ($9/mo, unlimited conversions, 100 MB, 10 API keys). Checkout, customer portal, and webhook handling for subscription lifecycle
+- **Postgres data layer** (`internal/db`) — users, sessions, API keys, conversions log, daily usage tracking with atomic upsert
+- **Auth package** (`internal/auth`) — password hashing, API key generation/validation, session tokens, Google OAuth config, HTTP middleware (RequireSession, RequireAPIKey, OptionalSession)
+- **Billing package** (`internal/billing`) — Stripe customer/checkout/portal creation, webhook verification, event processing, tier limit definitions
+- **Deployment infrastructure**:
+  - Multi-stage Dockerfile (Node frontend build → Go backend build → Debian runtime)
+  - DigitalOcean App Platform config (`.do/app.yaml`) with managed Postgres
+  - GitHub Actions: frontend CI (lint + build), deploy workflow
+  - Makefile targets: `build-web`, `build-all`, `docker`
+- **SPA embedding** — React frontend builds to static files embedded in Go binary via `//go:embed`. Single binary serves everything
+- **Dual-mode server** — when `DATABASE_URL` is set, server runs in full mode (auth, billing, SPA, hosted API). Without it, backward-compatible simple mode (bearer token auth)
+
+### Changed
+- **Server refactored** into multi-handler architecture: `server.go` (dual-mode routing), `api_handler.go`, `web_handler.go`, `auth_handler.go`, `billing_handler.go`, `middleware.go`, `spa.go`
+- Rate limiter generalized with `AllowN(key, limit)` for tier-aware per-key rate limiting
+- CORS middleware updated to support DELETE method, X-API-Key header, and credentials
+
+### New Dependencies
+- `github.com/lib/pq` v1.10.9 — Postgres driver
+- `golang.org/x/crypto` v0.36.0 — bcrypt password hashing
+- `golang.org/x/oauth2` v0.28.0 — Google OAuth 2.0
+- `github.com/stripe/stripe-go/v82` v82.1.0 — Stripe billing API
+- `github.com/mark3labs/mcp-go` v0.31.0 — MCP server framework
+
 ## [0.5.0] - 2026-02-12
 
 ### Changed
@@ -115,7 +147,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pixshift.yaml.example` with sample rules configuration
 - `CONTRIBUTING.md` with guide for adding new codecs
 
-[Unreleased]: https://github.com/DanielTso/pixshift/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/DanielTso/pixshift/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/DanielTso/pixshift/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/DanielTso/pixshift/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/DanielTso/pixshift/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DanielTso/pixshift/compare/v0.2.0...v0.3.0

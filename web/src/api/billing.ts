@@ -8,9 +8,10 @@ interface PortalResponse {
   url: string;
 }
 
-export async function createCheckout(): Promise<string> {
+export async function createCheckout(plan: 'pro' | 'business', interval: 'monthly' | 'annual'): Promise<string> {
   const res = await apiFetch<CheckoutResponse>('/internal/billing/checkout', {
     method: 'POST',
+    body: JSON.stringify({ plan, interval }),
   });
   return res.url;
 }

@@ -5,7 +5,7 @@ export interface User {
   email: string;
   name: string;
   provider: 'email' | 'google';
-  tier: 'free' | 'pro';
+  tier: 'free' | 'pro' | 'business';
   created_at: string;
 }
 

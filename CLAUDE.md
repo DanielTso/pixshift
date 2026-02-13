@@ -6,16 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 make build          # Build Go binary (requires CGO_ENABLED=1)
-make build-web      # Build React frontend (cd web && npm ci && npm run build)
+make build-web      # Build React frontend (cd web && npm install && npm run build)
 make build-all      # Build frontend + backend
 make docker         # Build Docker image
 make test           # Run all tests: go test ./...
 make lint           # Run golangci-lint
+make bench          # Run benchmarks
+make coverage       # Generate HTML coverage report
+make fmt            # Format code (gofmt)
+make vet            # Run go vet
 go test ./internal/codec/...   # Run tests for a single package
 go test -run TestDetect ./internal/codec/...  # Run a single test
 ```
 
-CGO is required — the WebP, HEIC, AVIF, and JXL codecs use C libraries. On Linux, install `libwebp-dev` and `libjxl-dev` before building.
+CGO is required — the WebP, HEIC, AVIF, and JXL codecs use C libraries. On Linux, install `libwebp-dev`, `libjxl-dev`, and `libheif-dev` before building.
 
 ## Architecture
 
@@ -53,7 +57,7 @@ Key server files: `server.go` (struct, dual-mode routing), `middleware.go` (tier
 
 All image formats implement `Decoder` and `Encoder` interfaces defined in `codec.go`. Optional interfaces: `AdvancedEncoder` (format-specific encoding options), `MultiFrameDecoder`/`MultiFrameEncoder` (animated images). Codecs register themselves in `DefaultRegistry()` in `registry.go`. Format detection uses magic bytes in `detect.go`, not file extensions.
 
-**To add a new format:** create `internal/codec/yourformat.go` implementing both interfaces, add the format constant to `codec.go`, register it in `DefaultRegistry()`, add magic bytes to `detect.go`, and update `ParseFormat()`/`DefaultExtension()`/`IsSupportedExtension()`.
+**To add a new format:** create `internal/codec/yourformat.go` implementing both interfaces, add the format constant to `codec.go`, register it in `DefaultRegistry()`, add magic bytes to `detect.go` (both `detectByMagic` and `detectByExtension`), update `ParseFormat()`/`DefaultExtension()`/`IsSupportedExtension()`, and update shell completions in `internal/completion/completion.go` (all 3 shells).
 
 ### Worker pool (`internal/pipeline/pool.go`)
 
@@ -106,6 +110,26 @@ Postgres schema in `migrations/001_initial.sql`. Five tables: `users`, `sessions
 ### API key format
 
 `pxs_` prefix + 32 random hex chars. Full key shown once at creation. Only SHA-256 hash stored in DB. Validated via `auth.HashAPIKey()` + DB lookup.
+
+## Common extension patterns
+
+### Adding a new CLI flag
+
+1. Add field to `options` struct in `cmd/pixshift/args.go`
+2. Add `case` in `parseArgs()` switch
+3. Add to `printUsage()` help text
+4. Wire through in the relevant mode file (batch.go, watch_mode.go, serve_mode.go, etc.)
+5. If it maps to a Job field, add to `buildJob()` and `applyOptsToJob()` in `helpers.go`
+6. Update shell completions in `internal/completion/completion.go`
+
+### Adding a new pipeline transform
+
+1. Add function to `internal/transform/`
+2. Add field to `pipeline.Job` struct in `job.go`
+3. Add to `transformImage()` helper in `pipeline.go` (respects fixed order)
+4. Add to `buildJob()` and `applyOptsToJob()` in `helpers.go`
+5. Add to `rules.Rule` struct and `Engine.Match()` for YAML rules support
+6. Add form field parsing in `server.go:handleConvert()` for HTTP API
 
 ## Build-time version injection
 

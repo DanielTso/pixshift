@@ -74,9 +74,11 @@ export default function Settings() {
           <div>
             <label className="mb-1 block text-xs text-navy-400">Plan</label>
             <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold uppercase ${
-              user.tier === 'pro'
-                ? 'bg-accent/15 text-accent'
-                : 'bg-navy-700 text-navy-400'
+              user.tier === 'business'
+                ? 'bg-amber-400/15 text-amber-400'
+                : user.tier === 'pro'
+                  ? 'bg-accent/15 text-accent'
+                  : 'bg-navy-700 text-navy-400'
             }`}>
               {user.tier}
             </span>

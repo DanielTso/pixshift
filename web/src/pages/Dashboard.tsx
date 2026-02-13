@@ -39,9 +39,11 @@ export default function Dashboard() {
               <div>
                 <p className="text-sm font-medium text-white">{user.name}</p>
                 <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                  user.tier === 'pro'
-                    ? 'bg-accent/15 text-accent'
-                    : 'bg-navy-700 text-navy-400'
+                  user.tier === 'business'
+                    ? 'bg-amber-400/15 text-amber-400'
+                    : user.tier === 'pro'
+                      ? 'bg-accent/15 text-accent'
+                      : 'bg-navy-700 text-navy-400'
                 }`}>
                   {user.tier}
                 </span>
@@ -56,7 +58,12 @@ export default function Dashboard() {
               </Link>
               {user.tier === 'free' && (
                 <Link to="/pricing" className="mt-2 rounded-lg bg-accent/10 px-3 py-2 text-center text-sm font-medium text-accent hover:bg-accent/15">
-                  Upgrade to Pro
+                  Upgrade
+                </Link>
+              )}
+              {user.tier === 'pro' && (
+                <Link to="/pricing" className="mt-2 rounded-lg bg-amber-400/10 px-3 py-2 text-center text-sm font-medium text-amber-400 hover:bg-amber-400/15">
+                  Upgrade to Business
                 </Link>
               )}
             </nav>

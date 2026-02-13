@@ -46,6 +46,19 @@ func (s *Server) handleAPIConvert(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Check monthly API request limit
+	if limits.MaxAPIRequestsPerMonth > 0 {
+		apiUsage, err := s.DB.GetMonthlyAPIUsage(r.Context(), user.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
+			return
+		}
+		if apiUsage >= limits.MaxAPIRequestsPerMonth {
+			writeError(w, http.StatusTooManyRequests, "MONTHLY_API_LIMIT", "monthly API request limit reached")
+			return
+		}
+	}
+
 	// Override max file size based on tier
 	maxSize := int64(limits.MaxFileSizeMB) << 20
 
@@ -167,6 +180,9 @@ func (s *Server) executeConvert(w http.ResponseWriter, r *http.Request, maxSize 
 		}
 		_ = s.DB.RecordConversion(r.Context(), conv)
 		_, _ = s.DB.IncrementUsage(r.Context(), user.ID)
+		if source == "api" {
+			_, _ = s.DB.IncrementMonthlyAPIUsage(r.Context(), user.ID)
+		}
 	}
 
 	// Set response headers

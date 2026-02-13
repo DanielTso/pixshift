@@ -8,6 +8,7 @@ import (
 
 	"github.com/DanielTso/pixshift/internal/db"
 	stripe "github.com/stripe/stripe-go/v82"
+	"github.com/stripe/stripe-go/v82/subscription"
 	"github.com/stripe/stripe-go/v82/webhook"
 )
 
@@ -50,8 +51,19 @@ func handleCheckoutCompleted(ctx context.Context, database *db.DB, event *stripe
 		return fmt.Errorf("find user for customer %s: %w", session.Customer, err)
 	}
 
-	if err := database.UpdateUserTier(ctx, user.ID, TierPro); err != nil {
-		return fmt.Errorf("set tier to pro: %w", err)
+	// Fetch the subscription to determine the tier from the price ID
+	tier := TierPro
+	if session.Subscription != "" {
+		sub, err := subscription.Get(session.Subscription, nil)
+		if err != nil {
+			log.Printf("warning: could not fetch subscription %s: %v", session.Subscription, err)
+		} else if len(sub.Items.Data) > 0 {
+			tier = TierForPriceID(sub.Items.Data[0].Price.ID)
+		}
+	}
+
+	if err := database.UpdateUserTier(ctx, user.ID, tier); err != nil {
+		return fmt.Errorf("set tier to %s: %w", tier, err)
 	}
 	if err := database.UpdateStripeSubscription(ctx, user.ID, session.Subscription); err != nil {
 		return fmt.Errorf("store subscription id: %w", err)
@@ -85,6 +97,13 @@ func handleSubscriptionUpdated(ctx context.Context, database *db.DB, event *stri
 	var sub struct {
 		Customer string `json:"customer"`
 		Status   string `json:"status"`
+		Items    struct {
+			Data []struct {
+				Price struct {
+					ID string `json:"id"`
+				} `json:"price"`
+			} `json:"data"`
+		} `json:"items"`
 	}
 	if err := json.Unmarshal(event.Data.Raw, &sub); err != nil {
 		return fmt.Errorf("parse subscription updated: %w", err)
@@ -95,9 +114,13 @@ func handleSubscriptionUpdated(ctx context.Context, database *db.DB, event *stri
 		return fmt.Errorf("find user for customer %s: %w", sub.Customer, err)
 	}
 
-	tier := TierPro
-	if sub.Status != "active" && sub.Status != "trialing" {
-		tier = TierFree
+	tier := TierFree
+	if sub.Status == "active" || sub.Status == "trialing" {
+		if len(sub.Items.Data) > 0 {
+			tier = TierForPriceID(sub.Items.Data[0].Price.ID)
+		} else {
+			tier = TierPro
+		}
 	}
 	if err := database.UpdateUserTier(ctx, user.ID, tier); err != nil {
 		return fmt.Errorf("update tier: %w", err)

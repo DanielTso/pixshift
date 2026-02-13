@@ -207,6 +207,8 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	apiUsage, _ := s.DB.GetMonthlyAPIUsage(r.Context(), user.ID)
+
 	conversions, err := s.DB.ListConversions(r.Context(), user.ID, 20, 0)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
@@ -240,10 +242,14 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"daily_count": usage,
-		"daily_limit": limits.MaxConversionsPerDay,
-		"tier":        user.Tier,
-		"conversions": convList,
+		"daily_count":       usage,
+		"daily_limit":       limits.MaxConversionsPerDay,
+		"tier":              user.Tier,
+		"conversions":       convList,
+		"monthly_api_count": apiUsage,
+		"monthly_api_limit": limits.MaxAPIRequestsPerMonth,
+		"max_file_size_mb":  limits.MaxFileSizeMB,
+		"max_batch_size":    limits.MaxBatchSize,
 	})
 }
 

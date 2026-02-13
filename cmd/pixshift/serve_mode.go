@@ -65,7 +65,10 @@ func runServeMode(ctx context.Context, registry *codec.Registry, opts *options) 
 		// Stripe billing
 		if stripeKey := os.Getenv("STRIPE_SECRET_KEY"); stripeKey != "" {
 			billing.Init(stripeKey)
-			billing.ProPriceID = os.Getenv("STRIPE_PRICE_ID")
+			billing.ProMonthlyPriceID = os.Getenv("STRIPE_PRO_MONTHLY_PRICE_ID")
+			billing.ProAnnualPriceID = os.Getenv("STRIPE_PRO_ANNUAL_PRICE_ID")
+			billing.BusinessMonthlyPriceID = os.Getenv("STRIPE_BUSINESS_MONTHLY_PRICE_ID")
+			billing.BusinessAnnualPriceID = os.Getenv("STRIPE_BUSINESS_ANNUAL_PRICE_ID")
 			srv.StripeWebhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
 			fmt.Fprintf(os.Stderr, "Stripe billing enabled\n")
 		}

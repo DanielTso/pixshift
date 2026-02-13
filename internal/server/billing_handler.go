@@ -22,6 +22,36 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var body struct {
+		Plan     string `json:"plan"`
+		Interval string `json:"interval"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_BODY", "invalid request body")
+		return
+	}
+
+	// Select the correct price ID based on plan and interval
+	var priceID string
+	switch {
+	case body.Plan == "pro" && body.Interval == "monthly":
+		priceID = billing.ProMonthlyPriceID
+	case body.Plan == "pro" && body.Interval == "annual":
+		priceID = billing.ProAnnualPriceID
+	case body.Plan == "business" && body.Interval == "monthly":
+		priceID = billing.BusinessMonthlyPriceID
+	case body.Plan == "business" && body.Interval == "annual":
+		priceID = billing.BusinessAnnualPriceID
+	default:
+		writeError(w, http.StatusBadRequest, "INVALID_PLAN", "invalid plan or interval")
+		return
+	}
+
+	if priceID == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_PLAN", "price not configured for this plan")
+		return
+	}
+
 	// Create Stripe customer if needed
 	customerID := ""
 	if user.StripeCustomerID.Valid {
@@ -42,7 +72,7 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	successURL := s.BaseURL + "/dashboard?upgraded=1"
 	cancelURL := s.BaseURL + "/pricing"
 
-	url, err := billing.CreateCheckoutSession(customerID, billing.ProPriceID, successURL, cancelURL)
+	url, err := billing.CreateCheckoutSession(customerID, priceID, successURL, cancelURL)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "STRIPE_ERROR", "failed to create checkout session")
 		return

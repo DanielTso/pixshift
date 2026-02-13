@@ -118,6 +118,11 @@ func (s *Server) executeConvert(w http.ResponseWriter, r *http.Request, maxSize 
 		maxDim, _ = strconv.Atoi(v)
 	}
 
+	if err := validateDimensions(width, height, maxDim); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_DIMENSIONS", err.Error())
+		return
+	}
+
 	// Save uploaded file to temp dir
 	tmpDir, err := os.MkdirTemp("", "pixshift-convert-*")
 	if err != nil {
@@ -126,7 +131,10 @@ func (s *Server) executeConvert(w http.ResponseWriter, r *http.Request, maxSize 
 	}
 	defer os.RemoveAll(tmpDir)
 
-	inputPath := filepath.Join(tmpDir, header.Filename)
+	// Sanitize filename to prevent path traversal and header injection
+	safeFilename := sanitizeFilename(header.Filename)
+
+	inputPath := filepath.Join(tmpDir, safeFilename)
 	tmpFile, err := os.Create(inputPath)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
@@ -141,10 +149,10 @@ func (s *Server) executeConvert(w http.ResponseWriter, r *http.Request, maxSize 
 	tmpFile.Close()
 
 	// Detect input format from extension
-	inputFormat := codec.Format(strings.TrimPrefix(strings.ToLower(filepath.Ext(header.Filename)), "."))
+	inputFormat := codec.Format(strings.TrimPrefix(strings.ToLower(filepath.Ext(safeFilename)), "."))
 
 	// Build output filename
-	baseName := strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+	baseName := strings.TrimSuffix(safeFilename, filepath.Ext(safeFilename))
 	outExt := codec.DefaultExtension(outFormat)
 	outputPath := filepath.Join(tmpDir, baseName+outExt)
 
@@ -152,7 +160,8 @@ func (s *Server) executeConvert(w http.ResponseWriter, r *http.Request, maxSize 
 	job := buildConvertJob(r, inputPath, outputPath, outFormat, quality, width, height, maxDim)
 
 	if _, _, err := pipe.Execute(job); err != nil {
-		writeError(w, http.StatusInternalServerError, "CONVERSION_FAILED", fmt.Sprintf("conversion failed: %v", err))
+		fmt.Fprintf(os.Stderr, "conversion error: %v\n", err)
+		writeError(w, http.StatusInternalServerError, "CONVERSION_FAILED", "conversion failed")
 		return
 	}
 
@@ -185,9 +194,9 @@ func (s *Server) executeConvert(w http.ResponseWriter, r *http.Request, maxSize 
 		}
 	}
 
-	// Set response headers
+	// Set response headers with safe filename encoding
 	w.Header().Set("Content-Type", contentType(outFormat))
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, baseName+outExt))
+	w.Header().Set("Content-Disposition", safeContentDisposition(baseName+outExt))
 
 	http.ServeFile(w, r, outputPath)
 }
@@ -262,4 +271,51 @@ func buildConvertJob(r *http.Request, inputPath, outputPath string, outFormat co
 	}
 
 	return job
+}
+
+const maxDimension = 50000 // max pixels in a single dimension
+
+// validateDimensions checks that image dimensions are within safe bounds.
+func validateDimensions(width, height, maxDim int) error {
+	if width < 0 || height < 0 || maxDim < 0 {
+		return fmt.Errorf("dimensions cannot be negative")
+	}
+	if width > maxDimension {
+		return fmt.Errorf("width %d exceeds maximum %d", width, maxDimension)
+	}
+	if height > maxDimension {
+		return fmt.Errorf("height %d exceeds maximum %d", height, maxDimension)
+	}
+	if maxDim > maxDimension {
+		return fmt.Errorf("max_dim %d exceeds maximum %d", maxDim, maxDimension)
+	}
+	return nil
+}
+
+// sanitizeFilename strips path components and unsafe characters from a filename.
+func sanitizeFilename(name string) string {
+	// Use only the base name (prevents path traversal)
+	name = filepath.Base(name)
+	if name == "." || name == ".." || name == "" {
+		name = "upload"
+	}
+	// Replace unsafe characters
+	safe := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			return r
+		}
+		return '_'
+	}, name)
+	if safe == "" {
+		safe = "upload"
+	}
+	return safe
+}
+
+// safeContentDisposition returns a safe Content-Disposition header value.
+func safeContentDisposition(filename string) string {
+	// ASCII-safe filename for broad compatibility
+	safe := sanitizeFilename(filename)
+	return fmt.Sprintf("attachment; filename=%q", safe)
 }

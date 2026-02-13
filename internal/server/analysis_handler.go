@@ -278,7 +278,7 @@ func (s *Server) decodeUpload(r *http.Request, field string, maxSize int64) (ima
 
 	img, e := dec.Decode(file)
 	if e != nil {
-		return nil, nil, &uploadError{http.StatusInternalServerError, "DECODE_FAILED", fmt.Sprintf("failed to decode image: %v", e)}
+		return nil, nil, &uploadError{http.StatusInternalServerError, "DECODE_FAILED", "failed to decode image"}
 	}
 
 	return img, &uploadInfo{format: format, size: header.Size}, nil
@@ -297,7 +297,7 @@ func saveFormFile(r *http.Request, field, dir string, maxSize int64) (string, in
 		return "", 0, fmt.Errorf("file size %d exceeds limit of %d bytes", header.Size, maxSize)
 	}
 
-	path := filepath.Join(dir, field+"_"+header.Filename)
+	path := filepath.Join(dir, field+"_"+sanitizeFilename(header.Filename))
 	out, err := os.Create(path)
 	if err != nil {
 		return "", 0, fmt.Errorf("internal error")

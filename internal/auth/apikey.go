@@ -9,15 +9,15 @@ import (
 
 // GenerateAPIKey creates a new API key and returns the display prefix, the full
 // key, and the SHA-256 hash of the full key. The full key has the format
-// "pxs_" followed by 32 random hex characters.
+// "pxs_" followed by 64 random hex characters (256-bit entropy).
 func GenerateAPIKey() (prefix, fullKey, hash string, err error) {
-	b := make([]byte, 16)
+	b := make([]byte, 32)
 	if _, err = rand.Read(b); err != nil {
 		return "", "", "", fmt.Errorf("generate api key: %w", err)
 	}
 	hexPart := hex.EncodeToString(b)
 	fullKey = "pxs_" + hexPart
-	prefix = hexPart[:8]
+	prefix = hexPart[:12]
 	hash = HashAPIKey(fullKey)
 	return prefix, fullKey, hash, nil
 }

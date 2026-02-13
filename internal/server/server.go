@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -39,6 +40,10 @@ type Server struct {
 	SessionSecret       string
 	BaseURL             string
 	WebFS               fs.FS // embedded SPA filesystem (can be nil)
+
+	// webhookEvents tracks processed Stripe event IDs for idempotency.
+	webhookEvents   map[string]time.Time
+	webhookEventsMu sync.Mutex
 }
 
 // ErrorResponse is the structured JSON error returned by the API.
@@ -50,9 +55,10 @@ type ErrorResponse struct {
 // New creates a Server with the given registry and listen address.
 func New(reg *codec.Registry, addr string) *Server {
 	return &Server{
-		Addr:        addr,
-		Registry:    reg,
-		MaxFileSize: 50 << 20, // 50 MB
+		Addr:          addr,
+		Registry:      reg,
+		MaxFileSize:   50 << 20, // 50 MB
+		webhookEvents: make(map[string]time.Time),
 	}
 }
 
@@ -106,14 +112,42 @@ func authMiddleware(apiKey string) func(http.Handler) http.Handler {
 	}
 }
 
+// securityHeadersMiddleware adds standard security headers to all responses.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		// HSTS: only set when behind HTTPS (X-Forwarded-Proto or TLS)
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // corsMiddleware sets CORS headers and handles OPTIONS preflight.
 func corsMiddleware(allowOrigins string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", allowOrigins)
+			if allowOrigins == "*" {
+				// Wildcard: no credentials allowed per spec
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else {
+				// Validate origin against whitelist
+				origin := r.Header.Get("Origin")
+				for _, allowed := range strings.Split(allowOrigins, ",") {
+					if strings.TrimSpace(allowed) == origin {
+						w.Header().Set("Access-Control-Allow-Origin", origin)
+						w.Header().Set("Access-Control-Allow-Credentials", "true")
+						break
+					}
+				}
+			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Max-Age", "3600")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
 				return
@@ -155,11 +189,15 @@ func (s *Server) Start(ctx context.Context) error {
 		timeout = 60 * time.Second
 	}
 
+	// Wrap with security headers
+	handler = securityHeadersMiddleware(handler)
+
 	srv := &http.Server{
-		Addr:         s.Addr,
-		Handler:      handler,
-		ReadTimeout:  timeout,
-		WriteTimeout: timeout,
+		Addr:              s.Addr,
+		Handler:           handler,
+		ReadTimeout:       timeout,
+		WriteTimeout:      timeout,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	errCh := make(chan error, 1)

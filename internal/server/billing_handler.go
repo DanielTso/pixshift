@@ -2,8 +2,11 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/DanielTso/pixshift/internal/auth"
 	"github.com/DanielTso/pixshift/internal/billing"
@@ -133,7 +136,25 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Idempotency: skip already-processed events
+	s.webhookEventsMu.Lock()
+	if _, seen := s.webhookEvents[event.ID]; seen {
+		s.webhookEventsMu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+	s.webhookEvents[event.ID] = time.Now()
+	// Evict entries older than 24 hours to prevent unbounded growth
+	for id, t := range s.webhookEvents {
+		if time.Since(t) > 24*time.Hour {
+			delete(s.webhookEvents, id)
+		}
+	}
+	s.webhookEventsMu.Unlock()
+
 	if err := billing.ProcessEvent(r.Context(), s.DB, event); err != nil {
+		fmt.Fprintf(os.Stderr, "webhook processing error for event %s: %v\n", event.ID, err)
 		writeError(w, http.StatusInternalServerError, "WEBHOOK_ERROR", "failed to process webhook event")
 		return
 	}

@@ -1,23 +1,24 @@
 # Pixshift
 
-Universal image converter CLI. Convert between JPEG, PNG, GIF, WebP, TIFF, BMP, HEIC/HEIF, AVIF, and RAW camera formats (CR2, NEF, DNG).
+Universal image converter CLI. Convert between JPEG, PNG, GIF, WebP, TIFF, BMP, HEIC/HEIF, AVIF, JPEG XL, and RAW camera formats (CR2, NEF, DNG, ARW, RAF, ORF, RW2).
 
 ## Features
 
-- **Any-to-any conversion** between 10+ image formats
+- **Any-to-any conversion** between 15+ image formats
 - **Smart format detection** via magic bytes (not file extensions)
+- **GIF animation** — preserve all frames through the pipeline with per-frame transforms
 - **Image transforms** — auto-rotate from EXIF, crop (dimensions or aspect ratio), text watermarks with font scaling and custom colors
 - **Image filters** — grayscale, sepia, brightness, contrast, sharpen, blur, invert
 - **Image resizing** — scale by width, height, or max dimension with selectable interpolation (nearest, bilinear, catmull-rom)
-- **Format-specific encoding** — PNG compression level, WebP method/lossless, JPEG progressive (reserved)
+- **Format-specific encoding** — PNG compression level, WebP method/lossless, JXL quality/lossless, JPEG progressive (reserved)
 - **Named presets** — built-in `web`, `thumbnail`, `print`, `archive` plus user-defined presets in YAML config
 - **Parallel processing** with configurable worker pool
 - **File size reporting** — see input/output sizes, compression ratios, and total savings
 - **Progress bar** — visual progress for batch conversions
 - **Metadata preservation** — keep EXIF data across conversions
 - **Strip metadata** — remove all EXIF/GPS data for privacy
-- **Watch mode** — auto-convert new files dropped into a directory
-- **Rules engine** — YAML config for batch conversion with per-format rules
+- **Watch mode** — auto-convert new files with configurable debounce, ignore patterns, and retry
+- **Rules engine** — YAML config with per-format rules supporting all transforms, filters, and encoding options
 - **Config auto-discovery** — automatically loads `pixshift.yaml` from current directory or `~/.config/pixshift/`
 - **Output templates** — custom output filenames with `{name}`, `{ext}`, `{format}` placeholders
 - **Directory structure preservation** — mirror input folder hierarchy with `-o` and `-r`
@@ -25,13 +26,13 @@ Universal image converter CLI. Convert between JPEG, PNG, GIF, WebP, TIFF, BMP, 
 - **SSIM comparison** — compare image quality with Structural Similarity Index
 - **Contact sheets** — generate thumbnail grid images from a directory
 - **Directory tree view** — display image files in a tree with sizes and formats
-- **HTTP server** — REST API for image conversion (`pixshift serve`)
+- **HTTP server** — REST API with auth, rate limiting, CORS, and full transform support (`pixshift serve`)
 - **JSON output** — machine-readable results for scripting
 - **Stdin/stdout** — pipe-based workflows (`cat img | pixshift -f webp - > out.webp`)
 - **Backup originals** — create `.bak` files before converting
 - **Shell completions** — bash, zsh, and fish
-- **RAW support** — extract JPEG previews from CR2, NEF, DNG files
-- **Cross-platform** — Linux, macOS, and Windows binaries
+- **RAW support** — extract JPEG previews from CR2, NEF, DNG, ARW, RAF, ORF, RW2 files
+- **Cross-platform** — Linux (amd64/arm64), macOS (Intel/Apple Silicon), and Windows binaries
 
 ## Format Support
 
@@ -39,15 +40,20 @@ Universal image converter CLI. Convert between JPEG, PNG, GIF, WebP, TIFF, BMP, 
 |--------|--------|--------|-------|
 | JPEG | Yes | Yes | stdlib |
 | PNG | Yes | Yes | stdlib |
-| GIF | Yes | Yes | stdlib |
+| GIF | Yes | Yes | stdlib, animated GIF support |
 | WebP | Yes | Yes | CGO for encode |
 | TIFF | Yes | Yes | |
 | BMP | Yes | Yes | |
 | HEIC/HEIF | Yes | Yes | CGO |
 | AVIF | Yes | Yes | CGO |
+| JPEG XL | Yes | Yes | CGO (libjxl) |
 | CR2 | Yes | - | Extracts embedded preview |
 | NEF | Yes | - | Extracts embedded preview |
 | DNG | Yes | - | Extracts embedded preview |
+| ARW | Yes | - | Sony, extracts embedded preview |
+| RAF | Yes | - | Fujifilm, extracts embedded preview |
+| ORF | Yes | - | Olympus, extracts embedded preview |
+| RW2 | Yes | - | Panasonic, extracts embedded preview |
 
 ## Install
 
@@ -121,11 +127,19 @@ pixshift -s -f jpg photo.heic                  # Strip all metadata
 # Backup originals before converting
 pixshift --backup -f webp photos/
 
+# Convert to JPEG XL
+pixshift -f jxl -q 90 photo.jpg
+pixshift -f jxl --lossless photo.png                    # Lossless JXL
+
 # Extract JPEG preview from RAW
 pixshift photo.CR2
+pixshift photo.arw                                       # Sony ARW
+pixshift photo.raf                                       # Fujifilm RAF
 
 # Watch mode: auto-convert new files
 pixshift -w -f webp ~/Pictures/
+pixshift -w --watch-debounce 200 --watch-ignore "*.tmp" -f webp ~/Pictures/
+pixshift -w --watch-retry 3 -f webp ~/Pictures/          # Retry failed conversions
 
 # Format-specific encoding options
 pixshift --png-compression 3 -f png photo.jpg           # Best PNG compression
@@ -188,9 +202,25 @@ pixshift --contact-sheet --contact-cols 6 --contact-size 150 -o output/ photos/
 pixshift serve
 pixshift serve :9090
 
+# With authentication and rate limiting
+pixshift serve --api-key mysecretkey --rate-limit 30 --cors-origins "*"
+
+# Configure timeouts and upload limits
+pixshift serve --request-timeout 120 --max-upload 100
+
 # Convert an image via API
 curl -F "file=@photo.heic" -F "format=webp" -F "quality=90" \
   http://localhost:8080/convert -o photo.webp
+
+# With authentication
+curl -H "Authorization: Bearer mysecretkey" \
+  -F "file=@photo.heic" -F "format=webp" \
+  http://localhost:8080/convert -o photo.webp
+
+# Apply transforms via API
+curl -F "file=@photo.jpg" -F "format=webp" -F "grayscale=true" \
+  -F "max_dim=1920" -F "watermark_text=PROOF" \
+  http://localhost:8080/convert -o out.webp
 
 # List supported formats
 curl http://localhost:8080/formats
@@ -205,7 +235,7 @@ curl http://localhost:8080/health
 
 | Flag | Description |
 |------|-------------|
-| `-f, --format` | Output format (jpg, png, gif, webp, tiff, bmp, heic, avif) |
+| `-f, --format` | Output format (jpg, png, gif, webp, tiff, bmp, heic, avif, jxl) |
 | `-q, --quality` | Encoding quality 1-100 (default: 92) |
 | `-j, --jobs` | Number of parallel workers (default: CPU count) |
 | `-o, --output` | Output directory |
@@ -260,6 +290,24 @@ curl http://localhost:8080/health
 | `--webp-method` | WebP method 0-6: speed vs quality tradeoff |
 | `--lossless` | WebP lossless encoding |
 | `--progressive` | JPEG progressive encoding (reserved for future encoder) |
+
+### Server
+
+| Flag | Description |
+|------|-------------|
+| `--api-key` | Require bearer token authentication |
+| `--rate-limit` | Max requests per minute per IP (0 = off) |
+| `--cors-origins` | CORS allowed origins (default: `*`) |
+| `--request-timeout` | Request timeout in seconds (default: 60) |
+| `--max-upload` | Max upload size in MB (default: 50) |
+
+### Watch Mode
+
+| Flag | Description |
+|------|-------------|
+| `--watch-debounce` | Debounce delay in milliseconds (default: 500) |
+| `--watch-ignore` | Glob pattern to ignore (repeatable, e.g. `*.tmp`) |
+| `--watch-retry` | Retry failed conversions N times with exponential backoff |
 
 ### Analysis
 
@@ -342,12 +390,30 @@ rules:
     output: jpg
     quality: 95
 
+  - name: instagram-square
+    glob: "insta_*.jpg"
+    output: jpeg
+    crop_ratio: "1:1"
+    crop_gravity: center
+    quality: 90
+    sharpen: true
+
+  - name: watermark-proofs
+    glob: "proof_*"
+    output: jpeg
+    watermark_text: "PROOF"
+    watermark_pos: center
+    watermark_opacity: 0.3
+    grayscale: true
+
   - name: default
     output: jpg
     quality: 92
 ```
 
-Rules are evaluated in order. First match wins. See [pixshift.yaml.example](pixshift.yaml.example) for more examples.
+Rules support all transform, filter, and encoding options: `width`, `height`, `max_dim`, `auto_rotate`, `crop_width`, `crop_height`, `crop_ratio`, `crop_gravity`, `watermark_text/pos/opacity/size/color/bg`, `grayscale`, `sepia`, `brightness`, `contrast`, `sharpen`, `blur`, `invert`, `interpolation`, `png_compression`, `webp_method`, `lossless`, `progressive`, `strip_metadata`, `preserve_metadata`.
+
+Rules are evaluated in order. First match wins. CLI flags override rule values. See [pixshift.yaml.example](pixshift.yaml.example) for more examples.
 
 ## Shell Completions
 
@@ -364,13 +430,20 @@ pixshift --completion fish > ~/.config/fish/completions/pixshift.fish
 
 ## Building
 
-Requires Go 1.24+ and CGO (for HEIC, AVIF, and WebP encoding).
+Requires Go 1.24+ and CGO (for HEIC, AVIF, WebP, and JXL).
+
+**Linux dependencies**: `libwebp-dev`, `libjxl-dev`
 
 ```bash
 make build          # Build for current platform
-make build-static   # Build with static linking (Linux)
 make test           # Run tests
 make lint           # Run linter
+make help           # Show all available targets
+make install        # Install to $GOPATH/bin
+make bench          # Run benchmarks
+make coverage       # Generate HTML coverage report
+make fmt            # Format code
+make vet            # Run go vet
 ```
 
 ## License

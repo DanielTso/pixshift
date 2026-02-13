@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-02-12
+
+### Changed
+- **Main.go refactored** from 1582 lines into 9 focused files under `cmd/pixshift/`: `main.go`, `args.go`, `batch.go`, `helpers.go`, `rules_mode.go`, `serve_mode.go`, `stdin.go`, `watch_mode.go`, `analysis.go`
+
+### Added
+- **JPEG XL (JXL) format** — full decode and encode via CGO bindings to libjxl, with AdvancedEncoder support (quality mapping, lossless mode)
+- **GIF animation support** — new `AnimatedImage` struct and `MultiFrameDecoder`/`MultiFrameEncoder` interfaces; animated GIFs now preserve all frames through the pipeline with per-frame transforms (resize, crop, filters, watermark)
+- **Additional RAW formats**: ARW (Sony), RAF (Fujifilm), ORF (Olympus), RW2 (Panasonic) — decode-only via embedded JPEG preview extraction
+- **Server hardening**:
+  - Middleware chain: structured JSON logging, bearer token auth (`--api-key`), CORS (`--cors-origins`), IP-based sliding-window rate limiting (`--rate-limit`)
+  - Structured JSON error responses with error codes (`UNAUTHORIZED`, `RATE_LIMITED`, `INVALID_FORMAT`, etc.)
+  - Configurable request timeouts (`--request-timeout`) and upload size limits (`--max-upload`)
+  - `/convert` endpoint now accepts all transform, filter, and encoding parameters as form fields
+- **Rules transforms** — YAML rules now support all 30+ transform, filter, and encoding fields (crop, watermark, grayscale, sepia, brightness, contrast, sharpen, blur, invert, interpolation, PNG compression, WebP method, lossless, progressive, strip/preserve metadata)
+- **Watch mode improvements**:
+  - Configurable debounce delay (`--watch-debounce <ms>`)
+  - Ignore patterns (`--watch-ignore <glob>`, repeatable)
+  - Retry with exponential backoff on conversion errors (`--watch-retry <N>`)
+  - Automatic watching of newly created subdirectories when `--recursive` is set
+  - Full transform support via JobTemplate (watch mode now applies all filters, watermarks, crop, etc.)
+- **CI/build improvements**:
+  - Makefile targets: `help`, `install`, `bench`, `coverage`, `fmt`, `vet`
+  - Code coverage upload to Codecov
+  - macOS Intel (`macos-13`) added to CI test matrix
+  - Release builds for `linux/arm64` (cross-compiled) and `darwin/amd64`
+  - SHA-256 checksums file in release artifacts
+- ~2000 lines of new tests across metadata extraction/injection, pipeline transforms, watch mode, shell completions, GIF codec, and rules engine (~340 total)
+
 ## [0.4.0] - 2026-02-12
 
 ### Fixed
@@ -86,7 +115,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pixshift.yaml.example` with sample rules configuration
 - `CONTRIBUTING.md` with guide for adding new codecs
 
-[Unreleased]: https://github.com/DanielTso/pixshift/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/DanielTso/pixshift/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/DanielTso/pixshift/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/DanielTso/pixshift/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DanielTso/pixshift/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/DanielTso/pixshift/compare/v0.1.0...v0.2.0

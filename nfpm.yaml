@@ -1,0 +1,31 @@
+name: pixshift
+arch: ${ARCH}
+version: ${VERSION}
+release: "1"
+section: graphics
+priority: optional
+maintainer: Daniel Tso <dnltso@hotmail.com>
+description: Universal image converter — CLI, HTTP server, and MCP server
+vendor: pixshift
+homepage: https://github.com/DanielTso/pixshift
+license: Apache-2.0
+
+contents:
+  - src: pixshift
+    dst: /usr/bin/pixshift
+  - src: LICENSE
+    dst: /usr/share/doc/pixshift/LICENSE
+
+overrides:
+  deb:
+    depends:
+      - libwebp7
+      - libjxl0.7
+      - libjpeg62-turbo
+      - libheif1
+  rpm:
+    depends:
+      - libwebp
+      - libjxl
+      - libjpeg-turbo
+      - libheif

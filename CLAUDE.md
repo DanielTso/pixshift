@@ -15,6 +15,8 @@ make bench          # Run benchmarks
 make coverage       # Generate HTML coverage report
 make fmt            # Format code (gofmt)
 make vet            # Run go vet
+make package-deb    # Build .deb package (requires nfpm)
+make package-rpm    # Build .rpm package (requires nfpm)
 go test ./internal/codec/...   # Run tests for a single package
 go test -run TestDetect ./internal/codec/...  # Run a single test
 ```
@@ -150,6 +152,10 @@ heif-go and avif-go transitively link against libjpeg-turbo at a different ABI v
 ### CGO transitive dependencies
 
 Adding new CGO codecs may conflict with the C libraries that heif-go and avif-go pull in at link time. Always test `make build` early when introducing new CGO dependencies.
+
+## Linux packaging
+
+`.deb` and `.rpm` packages are built with [nfpm](https://nfpm.goreleaser.com/). Config is in `nfpm.yaml`. The CI release workflow builds packages for amd64 and arm64 as part of the `package` job. Packages declare runtime dependencies on the CGO libraries (libwebp, libjxl, libjpeg-turbo, libheif). For local testing: `make package-deb` / `make package-rpm` (requires nfpm installed).
 
 ## Build-time version injection
 

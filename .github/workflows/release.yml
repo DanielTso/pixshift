@@ -113,9 +113,69 @@ jobs:
           name: pixshift-${{ matrix.os }}-${{ matrix.arch }}
           path: pixshift-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}
 
+  package:
+    name: Package (${{ matrix.format }}-${{ matrix.arch }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            nfpm_arch: amd64
+            rpm_arch: x86_64
+            format: deb
+          - arch: amd64
+            nfpm_arch: amd64
+            rpm_arch: x86_64
+            format: rpm
+          - arch: arm64
+            nfpm_arch: arm64
+            rpm_arch: aarch64
+            format: deb
+          - arch: arm64
+            nfpm_arch: arm64
+            rpm_arch: aarch64
+            format: rpm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: pixshift-linux-${{ matrix.arch }}
+
+      - name: Install nfpm
+        run: |
+          echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
+          sudo apt-get update
+          sudo apt-get install -y nfpm
+
+      - name: Set version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Rename binary
+        run: mv pixshift-linux-${{ matrix.arch }} pixshift && chmod +x pixshift
+
+      - name: Build package
+        run: |
+          if [ "${{ matrix.format }}" = "rpm" ]; then
+            ARCH=${{ matrix.rpm_arch }}
+          else
+            ARCH=${{ matrix.nfpm_arch }}
+          fi
+          VERSION=${{ steps.version.outputs.version }} ARCH=${ARCH} nfpm package --packager ${{ matrix.format }}
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixshift-${{ matrix.format }}-${{ matrix.arch }}
+          path: pixshift*.${{ matrix.format }}
+
   release:
     name: Create Release
-    needs: build
+    needs: [build, package]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:

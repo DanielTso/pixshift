@@ -78,6 +78,24 @@ One binary serves everything. Without `DATABASE_URL`, it runs as a simple CLI/se
 
 Download a binary from [Releases](https://github.com/DanielTso/pixshift/releases) for Linux, macOS, or Windows.
 
+### Debian / Ubuntu
+
+```bash
+curl -LO https://github.com/DanielTso/pixshift/releases/latest/download/pixshift_0.8.0_amd64.deb
+sudo apt install ./pixshift_*.deb
+```
+
+Packages target Debian 12+ / Ubuntu 24.04+. ARM64 packages are also available (`pixshift_*_arm64.deb`).
+
+### Fedora / RHEL
+
+```bash
+curl -LO https://github.com/DanielTso/pixshift/releases/latest/download/pixshift-0.8.0-1.x86_64.rpm
+sudo dnf install ./pixshift-*.rpm
+```
+
+Packages target Fedora 39+. ARM64 packages are also available (`pixshift-*-1.aarch64.rpm`).
+
 ### Homebrew (macOS / Linux)
 
 ```bash
@@ -684,6 +702,8 @@ make build-all      # Build frontend + Go binary with embedded SPA
 make test           # Run tests
 make lint           # Run linter
 make docker         # Build Docker image
+make package-deb    # Build .deb package (requires nfpm)
+make package-rpm    # Build .rpm package (requires nfpm)
 make help           # Show all available targets
 make install        # Install to $GOPATH/bin
 make bench          # Run benchmarks

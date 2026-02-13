@@ -77,6 +77,12 @@ func main() {
 		}
 	}
 
+	// MCP mode
+	if opts.mcpMode {
+		runMCPMode(registry)
+		return
+	}
+
 	pipe := pipeline.NewPipeline(registry)
 
 	// Serve mode

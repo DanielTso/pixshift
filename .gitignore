@@ -1,4 +1,5 @@
 /pixshift
 /pixshift.exe
-dist/
 *.test
+web/dist/*
+!web/dist/index.html

@@ -21,8 +21,13 @@ func NewRateLimiter(limit int) *RateLimiter {
 	}
 }
 
-// Allow checks if the given IP is within the rate limit.
-func (rl *RateLimiter) Allow(ip string) bool {
+// Allow checks if the given key is within the default rate limit.
+func (rl *RateLimiter) Allow(key string) bool {
+	return rl.AllowN(key, rl.limit)
+}
+
+// AllowN checks if the given key is within the specified per-minute limit.
+func (rl *RateLimiter) AllowN(key string, limit int) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -30,7 +35,7 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	cutoff := now.Add(-time.Minute)
 
 	// Filter expired entries
-	times := rl.requests[ip]
+	times := rl.requests[key]
 	valid := times[:0]
 	for _, t := range times {
 		if t.After(cutoff) {
@@ -38,12 +43,12 @@ func (rl *RateLimiter) Allow(ip string) bool {
 		}
 	}
 
-	if len(valid) >= rl.limit {
-		rl.requests[ip] = valid
+	if len(valid) >= limit {
+		rl.requests[key] = valid
 		return false
 	}
 
-	rl.requests[ip] = append(valid, now)
+	rl.requests[key] = append(valid, now)
 	return true
 }
 

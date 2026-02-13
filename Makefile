@@ -5,7 +5,7 @@ LDFLAGS  = -X github.com/DanielTso/pixshift/internal/version.Version=$(VERSION) 
            -X github.com/DanielTso/pixshift/internal/version.Commit=$(COMMIT) \
            -X github.com/DanielTso/pixshift/internal/version.Date=$(DATE)
 
-.PHONY: build build-static clean test lint help install bench coverage fmt vet
+.PHONY: build build-static build-web build-all clean test lint help install bench coverage fmt vet docker
 
 build: ## Build binary (requires CGO_ENABLED=1)
 	CGO_ENABLED=1 go build -ldflags '$(LDFLAGS)' -o pixshift ./cmd/pixshift
@@ -50,3 +50,11 @@ fmt: ## Format code
 
 vet: ## Run go vet
 	go vet ./...
+
+build-web: ## Build frontend
+	cd web && npm install && npm run build
+
+build-all: build-web build ## Build frontend then backend
+
+docker: ## Build Docker image
+	docker build -t pixshift .

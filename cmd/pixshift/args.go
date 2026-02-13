@@ -75,6 +75,9 @@ type options struct {
 	requestTimeout int   // seconds
 	maxUpload      int64 // bytes
 
+	// v0.6.0 fields
+	mcpMode bool
+
 	// v0.5.0 watch fields
 	watchDebounce int      // milliseconds
 	watchIgnore   []string // repeatable
@@ -487,6 +490,9 @@ func parseArgs(args []string) *options {
 			}
 			opts.watchRetry = wr
 			i += 2
+		case "mcp":
+			opts.mcpMode = true
+			i++
 		case "serve":
 			addr := ":8080"
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
@@ -516,7 +522,7 @@ func parseArgs(args []string) *options {
 	}
 
 	needsInput := !opts.watchMode && opts.configFile == "" && opts.completionSh == "" &&
-		opts.serveAddr == "" && len(opts.ssimFiles) == 0
+		opts.serveAddr == "" && len(opts.ssimFiles) == 0 && !opts.mcpMode
 	if len(opts.inputs) == 0 && needsInput {
 		fatal("no input files or directories specified")
 	}
@@ -530,6 +536,7 @@ func printUsage() {
 Usage:
   pixshift [options] <files or directories...>
   pixshift serve [addr]
+  pixshift mcp
   pixshift --tree [dir]
   pixshift --dedup [dir]
   pixshift --ssim <file1> <file2>
@@ -604,6 +611,10 @@ Watch mode options:
       --watch-debounce <ms> Debounce delay in milliseconds (default: 500)
       --watch-ignore <glob> Ignore files matching glob pattern (repeatable)
       --watch-retry <N>     Retry failed conversions N times with backoff
+
+MCP mode:
+  pixshift mcp              Start MCP (Model Context Protocol) server on stdio
+                            Exposes tools: convert_image, get_formats, analyze_image, compare_images
 
 Serve mode:
   pixshift serve [addr]     Start HTTP conversion server (default: :8080)

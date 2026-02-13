@@ -1,0 +1,48 @@
+name: pixshift
+region: nyc
+services:
+  - name: web
+    dockerfile_path: Dockerfile
+    github:
+      repo: DanielTso/pixshift
+      branch: main
+      deploy_on_push: true
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 8080
+    routes:
+      - path: /
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 10
+      period_seconds: 30
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: STRIPE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STRIPE_WEBHOOK_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STRIPE_PRICE_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: GOOGLE_CLIENT_ID
+        scope: RUN_TIME
+      - key: GOOGLE_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: SESSION_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: BASE_URL
+        scope: RUN_TIME
+        value: https://pixshift.dev
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    size: db-s-1vcpu-1gb
+    num_nodes: 1

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -12,19 +13,32 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/oauth2"
+
+	"github.com/DanielTso/pixshift/internal/auth"
 	"github.com/DanielTso/pixshift/internal/codec"
+	"github.com/DanielTso/pixshift/internal/db"
 	"github.com/DanielTso/pixshift/internal/pipeline"
 )
 
 // Server provides an HTTP API for image conversion.
 type Server struct {
+	// Existing fields (simple mode)
 	Addr         string
 	Registry     *codec.Registry
 	MaxFileSize  int64
-	APIKey       string        // optional bearer token auth
+	APIKey       string        // simple mode bearer token
 	RateLimit    int           // requests/min per IP (0=off)
 	AllowOrigins string        // CORS allowed origins ("*" default)
 	Timeout      time.Duration // request timeout (60s default)
+
+	// New fields for full mode (DB != nil)
+	DB                  *db.DB
+	StripeWebhookSecret string
+	OAuthConfig         *oauth2.Config
+	SessionSecret       string
+	BaseURL             string
+	WebFS               fs.FS // embedded SPA filesystem (can be nil)
 }
 
 // ErrorResponse is the structured JSON error returned by the API.
@@ -97,8 +111,9 @@ func corsMiddleware(allowOrigins string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", allowOrigins)
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
 				return
@@ -127,23 +142,12 @@ func rateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 
 // Start starts the HTTP server and blocks until ctx is cancelled.
 func (s *Server) Start(ctx context.Context) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/formats", s.handleFormats)
-	mux.HandleFunc("/convert", s.handleConvert)
+	var handler http.Handler
 
-	var handler http.Handler = mux
-	handler = loggingMiddleware(handler)
-	if s.APIKey != "" {
-		handler = authMiddleware(s.APIKey)(handler)
-	}
-	if s.AllowOrigins != "" {
-		handler = corsMiddleware(s.AllowOrigins)(handler)
-	}
-	if s.RateLimit > 0 {
-		limiter := NewRateLimiter(s.RateLimit)
-		go limiter.Cleanup(ctx)
-		handler = rateLimitMiddleware(limiter)(handler)
+	if s.DB != nil {
+		handler = s.buildFullModeHandler(ctx)
+	} else {
+		handler = s.buildSimpleModeHandler(ctx)
 	}
 
 	timeout := s.Timeout
@@ -172,6 +176,114 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		return err
 	}
+}
+
+// buildSimpleModeHandler creates the handler for simple mode (no DB, backward compatible).
+func (s *Server) buildSimpleModeHandler(ctx context.Context) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/formats", s.handleFormats)
+	mux.HandleFunc("/convert", s.handleConvert)
+
+	var handler http.Handler = mux
+	handler = loggingMiddleware(handler)
+	if s.APIKey != "" {
+		handler = authMiddleware(s.APIKey)(handler)
+	}
+	if s.AllowOrigins != "" {
+		handler = corsMiddleware(s.AllowOrigins)(handler)
+	}
+	if s.RateLimit > 0 {
+		limiter := NewRateLimiter(s.RateLimit)
+		go limiter.Cleanup(ctx)
+		handler = rateLimitMiddleware(limiter)(handler)
+	}
+	return handler
+}
+
+// buildFullModeHandler creates the handler for full mode (with DB, auth, billing).
+func (s *Server) buildFullModeHandler(ctx context.Context) http.Handler {
+	mux := http.NewServeMux()
+
+	// Shared rate limiter for full mode
+	limiter := NewRateLimiter(60) // default 60/min, overridden per-route by tier
+	go limiter.Cleanup(ctx)
+
+	// --- Public routes (no auth) ---
+	mux.HandleFunc("/health", s.handleHealth)
+
+	// --- API routes (API key auth) ---
+	apiKeyAuth := auth.RequireAPIKey(s.DB)
+	apiRateLimit := s.tierRateLimitMiddleware(limiter, apiKeyRateKey)
+
+	mux.Handle("/api/v1/convert", apiRateLimit(apiKeyAuth(http.HandlerFunc(s.handleAPIConvert))))
+	mux.HandleFunc("/api/v1/formats", s.handleFormats)
+
+	// --- Webhook routes (no auth, signature verified internally) ---
+	mux.HandleFunc("/api/webhooks/stripe", s.handleStripeWebhook)
+
+	// --- Web internal routes (session auth) ---
+	sessionAuth := auth.RequireSession(s.DB)
+	webRateLimit := s.tierRateLimitMiddleware(limiter, sessionRateKey)
+
+	mux.Handle("/internal/convert", webRateLimit(sessionAuth(http.HandlerFunc(s.handleWebConvert))))
+	mux.HandleFunc("/internal/formats", s.handleFormats)
+	mux.Handle("/internal/user", sessionAuth(http.HandlerFunc(s.handleGetUser)))
+	mux.Handle("/internal/keys", sessionAuth(http.HandlerFunc(s.handleKeys)))
+	mux.Handle("/internal/keys/", sessionAuth(http.HandlerFunc(s.handleRevokeKey)))
+	mux.Handle("/internal/usage", sessionAuth(http.HandlerFunc(s.handleUsage)))
+
+	// --- Auth routes (no auth, rate limited by IP) ---
+	authRateLimit := s.tierRateLimitMiddleware(limiter, ipRateKey)
+
+	mux.Handle("/internal/auth/signup", authRateLimit(http.HandlerFunc(s.handleSignup)))
+	mux.Handle("/internal/auth/login", authRateLimit(http.HandlerFunc(s.handleLogin)))
+	mux.HandleFunc("/internal/auth/logout", s.handleLogout)
+	mux.HandleFunc("/internal/auth/google", s.handleGoogleOAuth)
+	mux.HandleFunc("/internal/auth/google/callback", s.handleGoogleCallback)
+
+	// --- Billing routes (session auth) ---
+	mux.Handle("/internal/billing/checkout", sessionAuth(http.HandlerFunc(s.handleCheckout)))
+	mux.Handle("/internal/billing/portal", sessionAuth(http.HandlerFunc(s.handlePortal)))
+
+	// --- SPA handler ---
+	if s.WebFS != nil {
+		mux.Handle("/", s.spaHandler())
+	}
+
+	// Apply global middleware
+	var handler http.Handler = mux
+	handler = loggingMiddleware(handler)
+	if s.AllowOrigins != "" {
+		handler = corsMiddleware(s.AllowOrigins)(handler)
+	}
+
+	return handler
+}
+
+// spaHandler serves the embedded SPA filesystem, falling back to index.html
+// for client-side routing.
+func (s *Server) spaHandler() http.Handler {
+	fileServer := http.FileServer(http.FS(s.WebFS))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Try to serve the file directly
+		path := r.URL.Path
+		if path == "/" {
+			path = "/index.html"
+		}
+
+		// Check if file exists in the embedded FS
+		f, err := s.WebFS.Open(strings.TrimPrefix(path, "/"))
+		if err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		// Fall back to index.html for SPA client-side routing
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -205,6 +317,7 @@ func (s *Server) handleFormats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleConvert is the simple mode conversion handler (backward compatible).
 func (s *Server) handleConvert(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")

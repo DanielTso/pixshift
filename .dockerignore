@@ -1,0 +1,5 @@
+.git
+*.md
+.github
+.do
+web/node_modules

@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-02-13
+
+### Added
+- **Go SDK** (`sdk/` package) — programmatic API for embedding Pixshift in Go applications. Functional options pattern: `Convert()`, `ConvertBytes()`, `Analyze()`, `Palette()`, `Compare()` with options like `WithFormat()`, `WithQuality()`, `WithSmartCrop()`
+- **Color palette extraction** (`internal/color/`) — extract dominant colors from images using K-means clustering. Available via CLI (`--palette`), API (`POST /api/v1/palette`), and SDK
+- **Smart crop** (`internal/transform/smartcrop.go`) — entropy-based smart cropping that finds the most visually interesting region using 16x16 block variance analysis. CLI: `--smart-crop WxH`, API: `smart_crop_width`/`smart_crop_height` form fields
+- **Directory scan mode** — `--scan` flag scans directories and reports image counts by format with file sizes
+- **API analysis endpoints** — three new hosted API endpoints with API key auth:
+  - `POST /api/v1/palette` — extract dominant colors (configurable count)
+  - `POST /api/v1/analyze` — get image dimensions, format, size, and aspect ratio
+  - `POST /api/v1/compare` — SSIM comparison between two images with quality rating
+- **Three-tier pricing model** — Starter ($0), Pro ($19/mo or $190/yr), Business ($59/mo or $590/yr) with annual billing at 2 months free. All formats and transforms on all tiers; differentiation via usage limits, file size, batch size, and API quotas
+- **Monthly API usage tracking** — new `monthly_api_usage` table and usage checks for API request quotas per tier
+
+### Fixed
+- Frontend before/after preview comparison now works correctly
+
+### Security
+- **Path traversal prevention** — uploaded filenames are sanitized (strip path components, allow only safe characters) before writing to temp directory
+- **HTTP security headers** — `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, conditional `Strict-Transport-Security`
+- **CORS hardening** — wildcard origin no longer sends `Access-Control-Allow-Credentials`; non-wildcard origins validated against whitelist
+- **API key entropy** — increased from 128-bit (16 bytes) to 256-bit (32 bytes), prefix from 8 to 12 chars
+- **Stripe webhook idempotency** — event deduplication with in-memory map and 24-hour TTL to prevent double-processing
+- **Dimension validation** — reject resize/crop dimensions exceeding 50,000px to prevent resource exhaustion
+- **Error message sanitization** — internal error details logged to stderr, generic messages returned to clients
+- **Database pool configuration** — 25 max open connections, 5 idle, 5-minute lifetime
+- **ReadHeaderTimeout** — 10-second timeout to prevent slowloris attacks
+
 ## [0.6.0] - 2026-02-13
 
 ### Added
@@ -147,7 +175,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pixshift.yaml.example` with sample rules configuration
 - `CONTRIBUTING.md` with guide for adding new codecs
 
-[Unreleased]: https://github.com/DanielTso/pixshift/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/DanielTso/pixshift/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/DanielTso/pixshift/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/DanielTso/pixshift/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/DanielTso/pixshift/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/DanielTso/pixshift/compare/v0.3.0...v0.4.0

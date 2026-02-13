@@ -44,14 +44,15 @@ Route layout in full mode:
 
 | Prefix | Handler file | Auth |
 |--------|-------------|------|
-| `/api/v1/*` | `api_handler.go` | API key (`X-API-Key` header) |
+| `/api/v1/convert` | `api_handler.go` | API key (`X-API-Key` header) |
+| `/api/v1/palette,analyze,compare` | `analysis_handler.go` | API key (`X-API-Key` header) |
 | `/internal/auth/*` | `auth_handler.go` | None (public) |
 | `/internal/billing/*` | `billing_handler.go` | Session cookie |
 | `/internal/*` | `web_handler.go` | Session cookie |
 | `/api/webhooks/stripe` | `billing_handler.go` | Stripe signature |
 | `/*` | `spa.go` | None (static files) |
 
-Key server files: `server.go` (struct, dual-mode routing), `middleware.go` (tier-aware rate limiting), `ratelimit.go` (sliding window with `AllowN(key, limit)`).
+Key server files: `server.go` (struct, dual-mode routing, security headers middleware), `middleware.go` (tier-aware rate limiting), `ratelimit.go` (sliding window with `AllowN(key, limit)`), `analysis_handler.go` (palette, analyze, compare endpoints).
 
 ### Codec registry (`internal/codec/`)
 
@@ -69,7 +70,7 @@ Parallel processing via a channel-based worker pool. Configurable via `-j` flag,
 |---------|---------|
 | `pipeline` | Core conversion: Job/Result structs, Execute flow, worker pool |
 | `codec` | Format interfaces, registry, magic-byte detection, per-format codecs |
-| `transform` | Crop (pixel/aspect/gravity), EXIF auto-rotate, text watermark |
+| `transform` | Crop (pixel/aspect/gravity), EXIF auto-rotate, text watermark, entropy-based smart crop |
 | `resize` | CatmullRom interpolation resizing |
 | `metadata` | EXIF extraction and injection |
 | `rules` | YAML config engine (first-match-wins rule evaluation) |
@@ -77,12 +78,14 @@ Parallel processing via a channel-based worker pool. Configurable via `-j` flag,
 | `server` | Dual-mode HTTP server (simple + full), multi-handler architecture |
 | `db` | Postgres data layer: users, sessions, API keys, conversions, daily usage |
 | `auth` | Password hashing (bcrypt), API key gen/validation, session tokens, Google OAuth, HTTP middleware |
-| `billing` | Stripe integration: checkout, portal, webhooks, tier definitions |
+| `billing` | Stripe integration: checkout, portal, webhooks, three-tier pricing (Starter/Pro/Business) with annual billing |
 | `mcp` | MCP server (stdio) with convert, formats, analyze, compare tools |
 | `watch` | fsnotify-based watch mode with configurable debounce, ignore patterns, retry |
 | `dedup` | Duplicate detection via perceptual hashing (dHash + Hamming) |
 | `ssim` | Structural similarity image comparison |
+| `color` | Dominant color extraction via K-means clustering |
 | `contact` | Contact sheet (JPEG thumbnail grid) generation |
+| `sdk` | Public Go SDK: Convert, ConvertBytes, Analyze, Palette, Compare with functional options |
 
 ### CLI structure (`cmd/pixshift/`)
 
@@ -95,7 +98,8 @@ Parallel processing via a channel-based worker pool. Configurable via `-j` flag,
 | `watch_mode.go` | `runWatchMode()` |
 | `serve_mode.go` | `runServeMode()` — wires DB, auth, billing, OAuth, SPA when `DATABASE_URL` is set |
 | `mcp_mode.go` | `runMCPMode()` — starts MCP server on stdio |
-| `analysis.go` | `runTreeMode()`, `runSSIMMode()`, `runDedupMode()`, `runContactSheetMode()` |
+| `analysis.go` | `runTreeMode()`, `runSSIMMode()`, `runDedupMode()`, `runContactSheetMode()`, `runPaletteMode()` |
+| `scan_mode.go` | `runScanMode()` — directory scanning with format stats |
 | `stdin.go` | `runStdinMode()` |
 | `helpers.go` | `buildJob()`, `collectFiles()`, `buildOutputPath()`, formatting helpers |
 
@@ -105,11 +109,11 @@ React 19 + Vite 6 + TypeScript + Tailwind CSS 4. Builds to `web/dist/` which is 
 
 ### Database (`migrations/`)
 
-Postgres schema in `migrations/001_initial.sql`. Five tables: `users`, `sessions`, `api_keys`, `conversions`, `daily_usage`. Migrations run automatically on server startup via `db.Migrate()`.
+Postgres schema in `migrations/001_initial.sql` and `002_monthly_api_usage.sql`. Six tables: `users`, `sessions`, `api_keys`, `conversions`, `daily_usage`, `monthly_api_usage`. Migrations run automatically on server startup via `db.Migrate()`.
 
 ### API key format
 
-`pxs_` prefix + 32 random hex chars. Full key shown once at creation. Only SHA-256 hash stored in DB. Validated via `auth.HashAPIKey()` + DB lookup.
+`pxs_` prefix + 64 random hex chars (256-bit entropy). Full key shown once at creation. Only SHA-256 hash stored in DB. Validated via `auth.HashAPIKey()` + DB lookup.
 
 ## Common extension patterns
 

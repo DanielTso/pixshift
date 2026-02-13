@@ -1,5 +1,67 @@
 # Pixshift Development Chat Log
 
+## Session 7: 2026-02-13 (v0.7.0)
+
+### Summary
+
+Platform buildout plus security hardening. Added a Go SDK, color palette extraction (K-means), entropy-based smart crop, directory scan mode, three new API analysis endpoints, and three-tier pricing with annual billing. Then conducted a full security audit (17 vulnerabilities found) and fixed all critical/high issues. Built using a team of 6 parallel agents (color-palette, smart-crop, sdk, cli, api-endpoints, frontend) plus a security audit agent. Two commits: features (21 files, +1,802 lines) then security hardening (6 files, +139 lines).
+
+### What Was Built
+
+**Parallel (6 agents):**
+
+1. **Color Palette Extraction** (`internal/color/palette.go`) — K-means clustering with random initialization to extract N dominant colors from an image. Returns hex values and percentage weights. 8 tests.
+
+2. **Smart Crop** (`internal/transform/smartcrop.go`) — Entropy-based smart cropping that divides the image into 16x16 blocks, computes variance for each block, and uses a sliding window to find the region with the highest combined entropy. 9 tests.
+
+3. **Go SDK** (`sdk/`) — Public API for embedding Pixshift in Go applications. Functional options pattern: `Convert()`, `ConvertBytes()`, `Analyze()`, `Palette()`, `Compare()` with 12 options (`WithFormat()`, `WithQuality()`, `WithSmartCrop()`, etc.). 6 tests.
+
+4. **CLI Scan Mode** (`cmd/pixshift/scan_mode.go`) — `--scan` flag scans directories and reports image file counts by format with total sizes. Also added `--palette [N]` flag for extracting dominant colors from the command line, and `--smart-crop WxH` flag.
+
+5. **API Analysis Endpoints** (`internal/server/analysis_handler.go`) — Three new hosted API endpoints:
+   - `POST /api/v1/palette` — extract dominant colors (configurable count, default 5)
+   - `POST /api/v1/analyze` — image dimensions, format, file size, aspect ratio
+   - `POST /api/v1/compare` — SSIM comparison with quality rating
+   Both API-key-authenticated and simple-mode (no-auth) variants.
+
+6. **Frontend Fix** — Before/after preview comparison now works correctly.
+
+**Three-Tier Pricing** (separate earlier commit `8e0eaa1`):
+
+7. **Pricing Model Overhaul** — Replaced Free/Pro ($9/mo) with Starter/Pro/Business:
+   - Starter: $0, 20 conversions/day, 100 API/mo, 10 MB, 1 key
+   - Pro: $19/mo or $190/yr, 500/day, 5K API/mo, 100 MB, 5 keys
+   - Business: $59/mo or $590/yr, unlimited, 50K API/mo, 500 MB, 20 keys
+   - All formats and transforms available on every tier
+   - New fields: `MaxAPIRequestsPerMonth`, `MaxBatchSize` in `TierLimits`
+   - 4 Stripe price IDs replace single `STRIPE_PRICE_ID`
+   - New `monthly_api_usage` table with DB tracking
+
+**Security Hardening** (second commit `df3dd81`):
+
+8. **Security Audit + Fixes** — Background agent analyzed the full codebase and found 17 vulnerabilities (4 critical, 5 high, 5 medium, 3 low). Fixed all critical and high issues:
+   - Path traversal: `sanitizeFilename()` strips path components and unsafe chars
+   - HTTP security headers: nosniff, X-Frame-Options DENY, Referrer-Policy, Permissions-Policy, conditional HSTS
+   - CORS: wildcard origin no longer sends credentials header
+   - API key entropy: 128-bit → 256-bit (32 bytes), prefix 8 → 12 chars
+   - Stripe webhook idempotency: in-memory event dedup with 24h TTL
+   - Dimension validation: reject >50,000px to prevent resource exhaustion
+   - Error sanitization: generic messages to clients, details to stderr
+   - DB connection pool: 25 max open, 5 idle, 5min lifetime
+   - ReadHeaderTimeout: 10s to prevent slowloris
+
+### Issues Resolved
+
+- **Palette flag parsing bug**: `--palette testdata/landscape.jpg` fataled trying to parse filename as integer. Fixed by defaulting to 5 when Atoi fails instead of calling `fatal()`.
+- **SDK SmartCrop field mismatch**: Used `cfg.smartCropWidth`/`cfg.smartCropHeight` but config struct had `cfg.smartCropW`/`cfg.smartCropH`. Fixed field names.
+- **Stale binary after fix**: Palette bug persisted after code fix because binary wasn't rebuilt. Required `make build` to pick up the change.
+
+### File Count
+
+21 files changed (+1,802 lines) for features, 6 files changed (+139 lines) for security. 315 tests across 16 packages.
+
+---
+
 ## Session 6: 2026-02-12 (v0.6.0)
 
 ### Summary

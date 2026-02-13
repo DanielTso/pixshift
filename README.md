@@ -18,8 +18,9 @@ One binary serves everything. Without `DATABASE_URL`, it runs as a simple CLI/se
 - **Any-to-any conversion** between 15+ image formats
 - **Smart format detection** via magic bytes (not file extensions)
 - **GIF animation** — preserve all frames through the pipeline with per-frame transforms
-- **Image transforms** — auto-rotate from EXIF, crop (dimensions or aspect ratio), text watermarks with font scaling and custom colors
+- **Image transforms** — auto-rotate from EXIF, crop (dimensions or aspect ratio), smart crop (entropy-based), text watermarks with font scaling and custom colors
 - **Image filters** — grayscale, sepia, brightness, contrast, sharpen, blur, invert
+- **Color palette extraction** — extract dominant colors using K-means clustering
 - **Image resizing** — scale by width, height, or max dimension with selectable interpolation (nearest, bilinear, catmull-rom)
 - **Format-specific encoding** — PNG compression level, WebP method/lossless, JXL quality/lossless, JPEG progressive (reserved)
 - **Named presets** — built-in `web`, `thumbnail`, `print`, `archive` plus user-defined presets in YAML config
@@ -40,7 +41,8 @@ One binary serves everything. Without `DATABASE_URL`, it runs as a simple CLI/se
 - **Web application** — React SPA with drag-and-drop converter, live preview, and before/after comparison
 - **Hosted API** — REST API with API key auth, tier-based rate limiting, and usage tracking
 - **MCP server** — Model Context Protocol server for AI assistant integration
-- **Stripe billing** — Free and Pro tiers with subscription management
+- **Go SDK** — embed Pixshift in your own Go applications with a functional options API
+- **Stripe billing** — Starter/Pro/Business tiers with subscription management and annual billing
 - **HTTP server** — REST API with auth, rate limiting, CORS, and full transform support (`pixshift serve`)
 - **JSON output** — machine-readable results for scripting
 - **Stdin/stdout** — pipe-based workflows (`cat img | pixshift -f webp - > out.webp`)
@@ -176,6 +178,17 @@ pixshift --template "{name}-web.{format}" -f webp photo.jpg
 # JSON output for scripting
 pixshift --json -f webp photos/
 
+# Smart crop (entropy-based, finds most interesting region)
+pixshift --smart-crop 400x300 -f webp photo.jpg
+
+# Extract color palette
+pixshift --palette photo.jpg                      # 5 dominant colors
+pixshift --palette 8 photo.jpg                    # 8 colors
+pixshift --palette --json photo.jpg               # JSON output
+
+# Scan directory for images
+pixshift --scan ~/Pictures
+
 # Stdin/stdout pipeline
 cat photo.heic | pixshift -f webp - > photo.webp
 ```
@@ -200,7 +213,7 @@ The web app is a React SPA embedded in the Go binary and served at the root path
 - Transform panel: quality, resize, filters, watermark
 - Before/after comparison slider
 - Dashboard with usage charts, conversion history, API key management
-- Free tier: 20 conversions/day, 10 MB max. Pro: unlimited, 100 MB, $9/mo
+- Three tiers: Starter (free, 20/day), Pro ($19/mo, 500/day), Business ($59/mo, unlimited)
 
 **Access:** Visit [pixshift.dev](https://pixshift.dev) or self-host with `DATABASE_URL` set.
 
@@ -229,18 +242,39 @@ curl -X POST https://pixshift.dev/api/v1/convert \
 
 # List supported formats
 curl https://pixshift.dev/api/v1/formats
+
+# Extract color palette
+curl -X POST https://pixshift.dev/api/v1/palette \
+  -H "X-API-Key: pxs_your_key_here" \
+  -F "file=@photo.jpg" \
+  -F "count=8"
+
+# Analyze image metadata
+curl -X POST https://pixshift.dev/api/v1/analyze \
+  -H "X-API-Key: pxs_your_key_here" \
+  -F "file=@photo.jpg"
+
+# Compare two images (SSIM)
+curl -X POST https://pixshift.dev/api/v1/compare \
+  -H "X-API-Key: pxs_your_key_here" \
+  -F "file1=@original.jpg" \
+  -F "file2=@compressed.jpg"
 ```
 
 ### API Tiers
 
-| | Free | Pro ($9/mo) |
-|---|---|---|
-| Conversions/day | 20 | Unlimited |
-| Max file size | 10 MB | 100 MB |
-| Rate limit | 10 req/min | 60 req/min |
-| API keys | 1 | 10 |
+| | Starter | Pro ($19/mo) | Business ($59/mo) |
+|---|---|---|---|
+| Web conversions/day | 20 | 500 | Unlimited |
+| API requests/month | 100 | 5,000 | 50,000 |
+| Max file size | 10 MB | 100 MB | 500 MB |
+| Batch uploads | 1 file | 20 files | 100 files |
+| Rate limit | 10 req/min | 30 req/min | 120 req/min |
+| API keys | 1 | 5 | 20 |
+| MCP integration | — | Included | Included |
+| Annual billing | — | $190/yr (2 mo free) | $590/yr (2 mo free) |
 
-Manage your subscription and API keys from the [Dashboard](https://pixshift.dev/dashboard).
+All formats and transforms available on every tier. Manage your subscription and API keys from the [Dashboard](https://pixshift.dev/dashboard).
 
 ## MCP Server
 
@@ -273,6 +307,41 @@ pixshift mcp
 | `analyze_image` | Get format, dimensions, file size, and EXIF metadata |
 | `compare_images` | SSIM comparison between two images |
 
+## Go SDK
+
+Embed Pixshift in your own Go applications:
+
+```go
+import "github.com/DanielTso/pixshift/sdk"
+
+// Convert an image
+err := sdk.Convert("photo.heic", "photo.webp",
+    sdk.WithFormat(sdk.WebP),
+    sdk.WithQuality(90),
+    sdk.WithMaxDim(1920),
+)
+
+// Smart crop to find most interesting region
+err := sdk.Convert("photo.jpg", "thumb.webp",
+    sdk.WithFormat(sdk.WebP),
+    sdk.WithSmartCrop(400, 300),
+)
+
+// Extract color palette
+colors, err := sdk.Palette("photo.jpg", 5)
+for _, c := range colors {
+    fmt.Printf("%s (%.1f%%)\n", c.Hex, c.Percentage)
+}
+
+// Analyze image
+info, err := sdk.Analyze("photo.jpg")
+fmt.Printf("%dx%d %s\n", info.Width, info.Height, info.Format)
+
+// Compare images (SSIM)
+result, err := sdk.Compare("original.jpg", "compressed.jpg")
+fmt.Printf("SSIM: %.4f (%s)\n", result.Score, result.Rating)
+```
+
 ## Analysis Tools
 
 ```bash
@@ -291,6 +360,14 @@ pixshift --ssim original.jpg compressed.jpg
 # Generate contact sheet (thumbnail grid)
 pixshift --contact-sheet photos/
 pixshift --contact-sheet --contact-cols 6 --contact-size 150 -o output/ photos/
+
+# Extract color palette
+pixshift --palette photo.jpg                     # 5 dominant colors
+pixshift --palette 8 photo.jpg                   # 8 colors
+pixshift --palette --json photo.jpg              # JSON output
+
+# Scan directory for image stats
+pixshift --scan ~/Pictures
 ```
 
 ## HTTP Server (Simple Mode)
@@ -331,9 +408,12 @@ Set `DATABASE_URL` to enable auth, billing, web app, and hosted API:
 ```bash
 export DATABASE_URL="postgres://user:pass@localhost/pixshift?sslmode=disable"
 export SESSION_SECRET="your-random-secret"
-export STRIPE_SECRET_KEY="sk_..."          # optional
-export STRIPE_PRICE_ID="price_..."         # optional
-export STRIPE_WEBHOOK_SECRET="whsec_..."   # optional
+export STRIPE_SECRET_KEY="sk_..."                    # optional
+export STRIPE_PRO_MONTHLY_PRICE_ID="price_..."       # optional
+export STRIPE_PRO_ANNUAL_PRICE_ID="price_..."        # optional
+export STRIPE_BUSINESS_MONTHLY_PRICE_ID="price_..."  # optional
+export STRIPE_BUSINESS_ANNUAL_PRICE_ID="price_..."   # optional
+export STRIPE_WEBHOOK_SECRET="whsec_..."             # optional
 export GOOGLE_CLIENT_ID="..."              # optional
 export GOOGLE_CLIENT_SECRET="..."          # optional
 export BASE_URL="https://pixshift.dev"     # optional
@@ -346,6 +426,9 @@ Routes in full mode:
 | Path | Auth | Description |
 |------|------|-------------|
 | `POST /api/v1/convert` | API key | Hosted API conversion |
+| `POST /api/v1/palette` | API key | Extract color palette |
+| `POST /api/v1/analyze` | API key | Image metadata analysis |
+| `POST /api/v1/compare` | API key | SSIM image comparison |
 | `GET /api/v1/formats` | None | List formats |
 | `POST /api/webhooks/stripe` | Signature | Stripe webhooks |
 | `POST /internal/auth/signup` | None | Create account |
@@ -388,6 +471,7 @@ Routes in full mode:
 | Flag | Description |
 |------|-------------|
 | `--auto-rotate` | Auto-rotate based on EXIF orientation |
+| `--smart-crop WxH` | Smart crop to most interesting region (entropy-based) |
 | `--crop WxH` | Crop to exact pixel dimensions (e.g. `800x600`) |
 | `--crop-ratio W:H` | Crop to aspect ratio (e.g. `16:9`) |
 | `--crop-gravity` | Crop anchor: `center`, `north`, `south`, `east`, `west` |
@@ -452,6 +536,8 @@ Routes in full mode:
 | `--contact-sheet` | Generate a contact sheet (thumbnail grid) |
 | `--contact-cols` | Contact sheet columns (default: 4) |
 | `--contact-size` | Thumbnail size in pixels (default: 200) |
+| `--palette [N]` | Extract N dominant colors (default: 5, max: 20) |
+| `--scan` | Scan directory for image files with format stats |
 
 ### Other
 

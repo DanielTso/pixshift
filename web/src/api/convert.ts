@@ -31,8 +31,8 @@ export async function convertImage(file: File, options: ConvertOptions): Promise
   if (options.brightness !== undefined) form.append('brightness', String(options.brightness));
   if (options.contrast !== undefined) form.append('contrast', String(options.contrast));
   if (options.watermarkText) form.append('watermark_text', options.watermarkText);
-  if (options.watermarkPosition) form.append('watermark_position', options.watermarkPosition);
-  if (options.watermarkOpacity !== undefined) form.append('watermark_opacity', String(options.watermarkOpacity));
+  if (options.watermarkPosition) form.append('watermark_pos', options.watermarkPosition);
+  if (options.watermarkOpacity !== undefined) form.append('watermark_opacity', String(options.watermarkOpacity / 100));
 
   const res = await fetch('/internal/convert', {
     method: 'POST',

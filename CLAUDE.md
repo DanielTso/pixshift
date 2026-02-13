@@ -107,6 +107,8 @@ Parallel processing via a channel-based worker pool. Configurable via `-j` flag,
 
 React 19 + Vite 6 + TypeScript + Tailwind CSS 4. Builds to `web/dist/` which is embedded in the Go binary via `web/embed.go` (`//go:embed all:dist`). Build with `make build-web`. The SPA is served by `spa.go` with index.html fallback for client-side routing.
 
+**Converter store** (`web/src/stores/converter.ts`): Zustand store with `FileEntry[]` array for batch upload support. Each entry tracks its own `id`, `file`, `preview`, `result`, `status` (pending/converting/done/error), `error`, sizes, and dimensions. `activeFileId` controls which file is shown in the preview pane. Conversion runs sequentially through all pending/error entries with per-file progress. Key components: `DropZone` (accepts multiple files, has compact variant for adding more), `FileQueue` (horizontal thumbnail strip with status overlays), `PreviewPane` (reads from active entry), `DownloadButton` (batch convert/download/retry actions).
+
 ### Database (`migrations/`)
 
 Postgres schema in `migrations/001_initial.sql` and `002_monthly_api_usage.sql`. Six tables: `users`, `sessions`, `api_keys`, `conversions`, `daily_usage`, `monthly_api_usage`. Migrations run automatically on server startup via `db.Migrate()`.

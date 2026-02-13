@@ -1,5 +1,45 @@
 # Pixshift Development Chat Log
 
+## Session 8: 2026-02-13 (v0.8.0)
+
+### Summary
+
+Batch upload support for the web frontend plus backend improvements. Rewrote the Zustand converter store from single-file to `FileEntry[]` array with per-file status tracking. Added multi-file drag-and-drop, horizontal thumbnail strip (`FileQueue`), sequential batch conversion with progress ("Converting 3 of 5..."), "Download All" / "Retry Failed" actions, and compact "Add more" drop zone. Also optimized the blur filter to O(w*h) with separable prefix sums, added watermark auto-scaling with CatmullRom interpolation, and fixed simple-mode routing for the web frontend.
+
+### What Was Built
+
+1. **Store rewrite** (`web/src/stores/converter.ts`) — replaced `file: File | null` with `FileEntry[]` array. Each entry has id, file, preview, result, status (pending/converting/done/error), error, sizes, dimensions. `activeFileId` controls preview. `addFiles()` batch-adds with async preview generation. `convert()` runs sequentially with `convertProgress` tracking. Proper blob URL cleanup.
+
+2. **DropZone multi-file** (`web/src/components/converter/DropZone.tsx`) — `<input multiple>`, `collectImageFiles()` helper, new `compact` prop for slim "Add more" strip below the queue.
+
+3. **FileQueue** (`web/src/components/converter/FileQueue.tsx`) — NEW horizontal scrollable thumbnail strip. 80px cards with preview images or format label placeholders. Status overlays: spinner (converting), green checkmark (done), red X (error). Active file has accent ring. Remove button on hover. Auto-hidden for single files.
+
+4. **PreviewPane** (`web/src/components/converter/PreviewPane.tsx`) — derives state from `files.find(f => f.id === activeFileId)` instead of flat store fields. Same rendering (before/after slider, result-only, placeholder).
+
+5. **DownloadButton** (`web/src/components/converter/DownloadButton.tsx`) — four states: "Convert All (N files)" pre-conversion, "Converting X of Y..." during, "Download All" + "Clear All" when complete, "Retry Failed (N)" + "Download M Completed" for partial completion.
+
+6. **Home layout** (`web/src/pages/Home.tsx`) — added `FileQueue` between PreviewPane and FormatPicker. Compact `DropZone` at bottom.
+
+7. **Blur optimization** (`internal/transform/filters.go`) — rewrote box blur from naive O(w*h*r²) to two-pass separable prefix sums at O(w*h).
+
+8. **Watermark auto-scaling** (`internal/transform/watermark.go`) — when FontSize=0, auto-scales to ~3% of shorter image dimension. Unified code path using CatmullRom interpolation for smooth scaled text.
+
+9. **Simple mode route** (`internal/server/server.go`) — added `/internal/convert` to simple mode handler so the SPA works without DATABASE_URL.
+
+10. **API field fix** (`web/src/api/convert.ts`) — corrected `watermark_pos` field name and opacity scaling (divide by 100).
+
+### Files Changed
+- `web/src/stores/converter.ts` — rewritten
+- `web/src/components/converter/DropZone.tsx` — multi-file + compact variant
+- `web/src/components/converter/FileQueue.tsx` — NEW
+- `web/src/components/converter/PreviewPane.tsx` — reads from active entry
+- `web/src/components/converter/DownloadButton.tsx` — batch actions
+- `web/src/pages/Home.tsx` — new layout with FileQueue + compact DropZone
+- `internal/transform/filters.go` — optimized blur
+- `internal/transform/watermark.go` — auto-scaling + CatmullRom
+- `internal/server/server.go` — simple mode /internal/convert route
+- `web/src/api/convert.ts` — watermark field name fix
+
 ## Session 7: 2026-02-13 (v0.7.0)
 
 ### Summary

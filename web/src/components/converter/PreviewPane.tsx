@@ -24,13 +24,8 @@ const mimeToLabel: Record<string, string> = {
 };
 
 export default function PreviewPane() {
-  const file = useConverterStore((s) => s.file);
-  const preview = useConverterStore((s) => s.preview);
-  const resultUrl = useConverterStore((s) => s.resultUrl);
-  const originalSize = useConverterStore((s) => s.originalSize);
-  const resultSize = useConverterStore((s) => s.resultSize);
-  const imageDimensions = useConverterStore((s) => s.imageDimensions);
-  const resultDimensions = useConverterStore((s) => s.resultDimensions);
+  const files = useConverterStore((s) => s.files);
+  const activeFileId = useConverterStore((s) => s.activeFileId);
   const [sliderPos, setSliderPos] = useState(50);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -54,8 +49,10 @@ export default function PreviewPane() {
     document.addEventListener('mouseup', handleMouseUp);
   }, [handleMove]);
 
-  if (!preview) return null;
+  const entry = files.find((f) => f.id === activeFileId);
+  if (!entry) return null;
 
+  const { file, preview, resultUrl, originalSize, resultSize, imageDimensions, resultDimensions } = entry;
   const hasResult = !!resultUrl;
   const ratio = resultSize > 0 ? ((1 - resultSize / originalSize) * 100).toFixed(1) : null;
   const formatType = file?.type ? (mimeToLabel[file.type] || file.type.replace('image/', '').toUpperCase()) : null;
@@ -67,7 +64,7 @@ export default function PreviewPane() {
         className="relative overflow-hidden rounded-xl border border-navy-700/50 bg-navy-950"
         style={{ minHeight: '300px', maxHeight: '500px' }}
       >
-        {hasResult ? (
+        {hasResult && preview ? (
           <>
             {/* After image (full) */}
             <img src={resultUrl} alt="Converted" className="block max-h-[500px] w-full object-contain" draggable={false} />
@@ -109,8 +106,26 @@ export default function PreviewPane() {
               Converted
             </div>
           </>
-        ) : (
+        ) : hasResult ? (
+          <>
+            {/* Result only — original format not previewable by browser */}
+            <img src={resultUrl} alt="Converted" className="block max-h-[500px] w-full object-contain" draggable={false} />
+            <div className="absolute top-3 right-3 rounded-md bg-navy-900/80 px-2 py-1 text-xs text-navy-300 backdrop-blur">
+              Converted
+            </div>
+          </>
+        ) : preview ? (
           <img src={preview} alt="Preview" className="block max-h-[500px] w-full object-contain" />
+        ) : (
+          <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 text-navy-400">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-navy-600">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+            <p className="text-sm">Preview not available for {formatType || 'this format'}</p>
+            <p className="text-xs text-navy-500">Convert to see the result</p>
+          </div>
         )}
       </div>
 

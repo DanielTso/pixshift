@@ -26,8 +26,9 @@ type WatermarkOptions struct {
 }
 
 // ApplyWatermark draws a semi-transparent text watermark on img and returns
-// a new image. The text is rendered in white over a dark background pad for
-// readability.
+// a new image. The text is rendered over a dark background pad for readability.
+// When FontSize is not set (0), the watermark auto-scales to ~3% of the
+// shorter image dimension so it remains visible on any image size.
 func ApplyWatermark(img image.Image, opts WatermarkOptions) image.Image {
 	if opts.Text == "" {
 		return img
@@ -38,17 +39,15 @@ func ApplyWatermark(img image.Image, opts WatermarkOptions) image.Image {
 	if opts.Opacity > 1 {
 		opts.Opacity = 1
 	}
-	if opts.FontSize <= 0 {
-		opts.FontSize = 1.0
-	}
 
 	textColor := parseHexColor(opts.Color, color.RGBA{R: 255, G: 255, B: 255, A: 255})
 	bgColor := parseHexColor(opts.BgColor, color.RGBA{R: 0, G: 0, B: 0, A: 255})
 
 	b := img.Bounds()
+	imgW, imgH := b.Dx(), b.Dy()
 
 	// Copy source into a mutable RGBA.
-	dst := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	dst := image.NewRGBA(image.Rect(0, 0, imgW, imgH))
 	draw.Draw(dst, dst.Bounds(), img, b.Min, draw.Src)
 
 	face := basicfont.Face7x13
@@ -59,94 +58,85 @@ func ApplyWatermark(img image.Image, opts WatermarkOptions) image.Image {
 	const padX = 4
 	const padY = 2
 
+	// Calculate scale factor.
 	scale := opts.FontSize
-
-	if scale > 1 {
-		// Render text at base size to a small canvas, then scale up.
-		baseW := textW + padX*2
-		baseH := textH + padY*2
-
-		// Draw base watermark.
-		base := image.NewRGBA(image.Rect(0, 0, baseW, baseH))
-		alpha := uint8(255)
-		bgC := color.NRGBA{R: bgColor.R, G: bgColor.G, B: bgColor.B, A: alpha}
-		draw.Draw(base, base.Bounds(), &image.Uniform{C: bgC}, image.Point{}, draw.Src)
-
-		txtC := color.NRGBA{R: textColor.R, G: textColor.G, B: textColor.B, A: alpha}
-		dot := fixed.Point26_6{
-			X: fixed.I(padX),
-			Y: fixed.I(padY + metrics.Ascent.Ceil()),
+	if scale <= 0 {
+		// Auto-scale: target font height at ~3% of the shorter image dimension.
+		minDim := float64(imgW)
+		if float64(imgH) < minDim {
+			minDim = float64(imgH)
 		}
-		drawer := &font.Drawer{
-			Dst:  base,
-			Src:  &image.Uniform{C: txtC},
-			Face: face,
-			Dot:  dot,
+		scale = minDim * 0.03 / float64(textH)
+		if scale < 1.0 {
+			scale = 1.0
 		}
-		drawer.DrawString(opts.Text)
-
-		// Scale up.
-		scaledW := int(float64(baseW) * scale)
-		scaledH := int(float64(baseH) * scale)
-		scaled := image.NewRGBA(image.Rect(0, 0, scaledW, scaledH))
-		xdraw.NearestNeighbor.Scale(scaled, scaled.Bounds(), base, base.Bounds(), xdraw.Over, nil)
-
-		// Apply opacity and composite.
-		x, y := watermarkPosition(dst.Bounds().Dx(), dst.Bounds().Dy(), scaledW, scaledH, opts.Position)
-		opAlpha := opts.Opacity
-		for sy := 0; sy < scaledH; sy++ {
-			for sx := 0; sx < scaledW; sx++ {
-				dx, dy := x+sx, y+sy
-				if dx < 0 || dy < 0 || dx >= dst.Bounds().Dx() || dy >= dst.Bounds().Dy() {
-					continue
-				}
-				sc := scaled.RGBAAt(sx, sy)
-				dc := dst.RGBAAt(dx, dy)
-				a := float64(sc.A) / 255 * opAlpha
-				dst.SetRGBA(dx, dy, color.RGBA{
-					R: uint8(float64(sc.R)*a + float64(dc.R)*(1-a)),
-					G: uint8(float64(sc.G)*a + float64(dc.G)*(1-a)),
-					B: uint8(float64(sc.B)*a + float64(dc.B)*(1-a)),
-					A: dc.A,
-				})
-			}
-		}
-		return dst
 	}
 
-	// Scale <= 1: render at native size.
-	bgW := textW + padX*2
-	bgH := textH + padY*2
+	// Render text at base size, then scale up with smooth interpolation.
+	baseW := textW + padX*2
+	baseH := textH + padY*2
 
-	x, y := watermarkPosition(dst.Bounds().Dx(), dst.Bounds().Dy(), bgW, bgH, opts.Position)
+	base := image.NewRGBA(image.Rect(0, 0, baseW, baseH))
+	bgC := color.NRGBA{R: bgColor.R, G: bgColor.G, B: bgColor.B, A: 255}
+	draw.Draw(base, base.Bounds(), &image.Uniform{C: bgC}, image.Point{}, draw.Src)
 
-	// Draw dark background rectangle with opacity.
-	alpha := uint8(opts.Opacity * 255)
-	bgC := color.NRGBA{R: bgColor.R, G: bgColor.G, B: bgColor.B, A: alpha}
-	bgRect := image.Rect(x, y, x+bgW, y+bgH)
-	draw.Draw(dst, bgRect, &image.Uniform{C: bgC}, image.Point{}, draw.Over)
-
-	// Draw text with opacity.
-	txtC := color.NRGBA{R: textColor.R, G: textColor.G, B: textColor.B, A: alpha}
+	txtC := color.NRGBA{R: textColor.R, G: textColor.G, B: textColor.B, A: 255}
 	dot := fixed.Point26_6{
-		X: fixed.I(x + padX),
-		Y: fixed.I(y + padY + metrics.Ascent.Ceil()),
+		X: fixed.I(padX),
+		Y: fixed.I(padY + metrics.Ascent.Ceil()),
 	}
 	drawer := &font.Drawer{
-		Dst:  dst,
+		Dst:  base,
 		Src:  &image.Uniform{C: txtC},
 		Face: face,
 		Dot:  dot,
 	}
 	drawer.DrawString(opts.Text)
 
+	// Scale with CatmullRom for smooth text edges.
+	scaledW := int(float64(baseW) * scale)
+	scaledH := int(float64(baseH) * scale)
+	if scaledW < 1 {
+		scaledW = 1
+	}
+	if scaledH < 1 {
+		scaledH = 1
+	}
+	scaled := image.NewRGBA(image.Rect(0, 0, scaledW, scaledH))
+	xdraw.CatmullRom.Scale(scaled, scaled.Bounds(), base, base.Bounds(), xdraw.Over, nil)
+
+	// Scale margin proportionally.
+	margin := int(10 * scale)
+	if margin < 10 {
+		margin = 10
+	}
+
+	// Position and composite with opacity.
+	x, y := watermarkPosition(imgW, imgH, scaledW, scaledH, opts.Position, margin)
+	opAlpha := opts.Opacity
+	for sy := 0; sy < scaledH; sy++ {
+		for sx := 0; sx < scaledW; sx++ {
+			dx, dy := x+sx, y+sy
+			if dx < 0 || dy < 0 || dx >= imgW || dy >= imgH {
+				continue
+			}
+			sc := scaled.RGBAAt(sx, sy)
+			dc := dst.RGBAAt(dx, dy)
+			a := float64(sc.A) / 255 * opAlpha
+			dst.SetRGBA(dx, dy, color.RGBA{
+				R: uint8(float64(sc.R)*a + float64(dc.R)*(1-a)),
+				G: uint8(float64(sc.G)*a + float64(dc.G)*(1-a)),
+				B: uint8(float64(sc.B)*a + float64(dc.B)*(1-a)),
+				A: dc.A,
+			})
+		}
+	}
 	return dst
 }
 
 // watermarkPosition returns the top-left corner for a watermark box of size
-// (w, h) within an image of size (imgW, imgH), respecting a 10px margin.
-func watermarkPosition(imgW, imgH, w, h int, position string) (int, int) {
-	const margin = 10
+// (w, h) within an image of size (imgW, imgH), respecting the given margin.
+func watermarkPosition(imgW, imgH, w, h int, position string, margin int) (int, int) {
 	switch strings.ToLower(strings.TrimSpace(position)) {
 	case "top-left":
 		return margin, margin

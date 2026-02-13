@@ -222,6 +222,7 @@ func (s *Server) buildSimpleModeHandler(ctx context.Context) http.Handler {
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/formats", s.handleFormats)
 	mux.HandleFunc("/convert", s.handleConvert)
+	mux.HandleFunc("/internal/convert", s.handleConvert)
 	mux.HandleFunc("/palette", s.handleSimplePalette)
 	mux.HandleFunc("/analyze", s.handleSimpleAnalyze)
 

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-02-13
+
+### Added
+- **Batch upload support** in web frontend — drop multiple images at once, thumbnail strip with status indicators (pending/converting/done/error), sequential conversion with progress tracking ("Converting 3 of 5..."), "Download All" for completed files, retry failed conversions, and compact "Add more" drop zone
+- **Watermark auto-scaling** — when `--watermark-size` is not set, watermarks now auto-scale to ~3% of the shorter image dimension so text remains visible on any image size. CatmullRom interpolation replaces nearest-neighbor for smoother scaled text
+- **Optimized blur filter** — rewrote box blur from O(w*h*r^2) to O(w*h) using two-pass separable prefix sums, making large blur radii significantly faster
+
+### Fixed
+- Watermark form field names in web frontend (`watermark_pos` and opacity scaling) now match backend expectations
+- Simple-mode server now serves `/internal/convert` route, allowing the web frontend to work without `DATABASE_URL`
+
 ## [0.7.0] - 2026-02-13
 
 ### Added
@@ -175,7 +186,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pixshift.yaml.example` with sample rules configuration
 - `CONTRIBUTING.md` with guide for adding new codecs
 
-[Unreleased]: https://github.com/DanielTso/pixshift/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/DanielTso/pixshift/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/DanielTso/pixshift/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/DanielTso/pixshift/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/DanielTso/pixshift/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/DanielTso/pixshift/compare/v0.4.0...v0.5.0

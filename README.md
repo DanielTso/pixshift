@@ -38,7 +38,7 @@ One binary serves everything. Without `DATABASE_URL`, it runs as a simple CLI/se
 - **SSIM comparison** — compare image quality with Structural Similarity Index
 - **Contact sheets** — generate thumbnail grid images from a directory
 - **Directory tree view** — display image files in a tree with sizes and formats
-- **Web application** — React SPA with drag-and-drop converter, live preview, and before/after comparison
+- **Web application** — React SPA with batch upload, drag-and-drop converter, live preview, and before/after comparison
 - **Hosted API** — REST API with API key auth, tier-based rate limiting, and usage tracking
 - **MCP server** — Model Context Protocol server for AI assistant integration
 - **Go SDK** — embed Pixshift in your own Go applications with a functional options API
@@ -208,6 +208,8 @@ Done. 3 converted, 0 failed. Total: 13.1 MB -> 2.7 MB (79% smaller)
 The web app is a React SPA embedded in the Go binary and served at the root path.
 
 **Features:**
+- Batch upload — drop multiple images, thumbnail strip with status indicators, sequential conversion with progress
+- Download All completed files or retry failed ones
 - Drag-and-drop image upload with instant preview
 - Format picker with 8+ output formats
 - Transform panel: quality, resize, filters, watermark

@@ -1,16 +1,17 @@
 import { useConverterStore } from '../stores/converter';
 import DropZone from '../components/converter/DropZone';
+import FileQueue from '../components/converter/FileQueue';
 import PreviewPane from '../components/converter/PreviewPane';
 import FormatPicker from '../components/converter/FormatPicker';
 import TransformPanel from '../components/converter/TransformPanel';
 import DownloadButton from '../components/converter/DownloadButton';
 
 export default function Home() {
-  const file = useConverterStore((s) => s.file);
+  const hasFiles = useConverterStore((s) => s.files.length > 0);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {!file ? (
+      {!hasFiles ? (
         <div className="flex flex-col items-center gap-8">
           <div className="text-center">
             <h1 className="mb-3 text-4xl font-bold tracking-tight text-white sm:text-5xl">
@@ -44,8 +45,10 @@ export default function Home() {
         <div className="flex flex-col gap-6 lg:flex-row">
           <div className="flex flex-1 flex-col gap-6">
             <PreviewPane />
+            <FileQueue />
             <FormatPicker />
             <DownloadButton />
+            <DropZone compact />
           </div>
           <div className="w-full lg:w-80">
             <TransformPanel />

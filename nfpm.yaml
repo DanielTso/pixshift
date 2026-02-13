@@ -21,7 +21,7 @@ overrides:
     depends:
       - libwebp7
       - libjxl0.7
-      - libjpeg62-turbo
+      - libjpeg62-turbo | libjpeg-turbo8
       - libheif1
   rpm:
     depends:

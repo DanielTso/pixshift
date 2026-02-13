@@ -6,8 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 make build          # Build Go binary (requires CGO_ENABLED=1)
-make build-web      # Build React frontend (cd web && npm install && npm run build)
-make build-all      # Build frontend + backend
 make docker         # Build Docker image
 make test           # Run all tests: go test ./...
 make lint           # Run golangci-lint
@@ -25,7 +23,7 @@ Requires Go 1.24+ and CGO. The WebP, HEIC, AVIF, and JXL codecs use C libraries.
 
 ## Architecture
 
-Pixshift is a Go monolith that serves as CLI, HTTP server, and MCP server from a single binary. The entry point is `cmd/pixshift/main.go` which dispatches to mode-specific files. Arguments are parsed manually in `args.go` (no CLI framework).
+Pixshift is a Go CLI tool that also serves as an HTTP server and MCP server from a single binary. The entry point is `cmd/pixshift/main.go` which dispatches to mode-specific files. Arguments are parsed manually in `args.go` (no CLI framework).
 
 ### Core conversion flow
 
@@ -35,26 +33,23 @@ File → Detect (magic bytes) → Decode → Transform → Encode → Inject Met
 
 This is implemented in `internal/pipeline/pipeline.go:Execute()`. The `Job` struct (`pipeline/job.go`) carries all parameters for a single conversion. Animated GIFs take a multi-frame path: `DecodeAll` → per-frame `transformImage` → `EncodeAll`.
 
-### Dual-mode server (`internal/server/`)
+### HTTP server (`internal/server/`)
 
-The server runs in two modes depending on environment:
+Simple HTTP server with bearer token auth, basic rate limiting, and conversion endpoints.
 
-- **Simple mode** (no `DATABASE_URL`): Bearer token auth, basic rate limiting, `/convert` + `/formats` + `/health` only. Backward compatible with v0.5.0.
-- **Full mode** (`DATABASE_URL` set): Postgres-backed auth, Stripe billing, embedded React SPA, hosted API with API key auth, Google OAuth.
+**Files:**
+- `server.go` — Server struct, routing, middleware (CORS, logging, auth, security headers), handlers for `/health`, `/formats`, `/convert`, `/palette`, `/analyze`
+- `ratelimit.go` — Sliding window rate limiter with `AllowN(key, limit)`
 
-Route layout in full mode:
+**Endpoints:**
 
-| Prefix | Handler file | Auth |
-|--------|-------------|------|
-| `/api/v1/convert` | `api_handler.go` | API key (`X-API-Key` header) |
-| `/api/v1/palette,analyze,compare` | `analysis_handler.go` | API key (`X-API-Key` header) |
-| `/internal/auth/*` | `auth_handler.go` | None (public) |
-| `/internal/billing/*` | `billing_handler.go` | Session cookie |
-| `/internal/*` | `web_handler.go` | Session cookie |
-| `/api/webhooks/stripe` | `billing_handler.go` | Stripe signature |
-| `/*` | `spa.go` | None (static files) |
-
-Key server files: `server.go` (struct, dual-mode routing, security headers middleware), `middleware.go` (tier-aware rate limiting), `ratelimit.go` (sliding window with `AllowN(key, limit)`), `analysis_handler.go` (palette, analyze, compare endpoints).
+| Path | Method | Description |
+|------|--------|-------------|
+| `/convert` | POST | Convert an image (multipart form with all transforms) |
+| `/palette` | POST | Extract dominant color palette |
+| `/analyze` | POST | Get image dimensions, format, size |
+| `/formats` | GET | List supported decode/encode formats |
+| `/health` | GET | Health check |
 
 ### Codec registry (`internal/codec/`)
 
@@ -77,10 +72,7 @@ Parallel processing via a channel-based worker pool. Configurable via `-j` flag,
 | `metadata` | EXIF extraction and injection |
 | `rules` | YAML config engine (first-match-wins rule evaluation) |
 | `preset` | Built-in presets: web, thumbnail, print, archive |
-| `server` | Dual-mode HTTP server (simple + full), multi-handler architecture |
-| `db` | Postgres data layer: users, sessions, API keys, conversions, daily usage |
-| `auth` | Password hashing (bcrypt), API key gen/validation, session tokens, Google OAuth, HTTP middleware |
-| `billing` | Stripe integration: checkout, portal, webhooks, three-tier pricing (Starter/Pro/Business) with annual billing |
+| `server` | HTTP server with rate limiting, CORS, auth, conversion/palette/analyze endpoints |
 | `mcp` | MCP server (stdio) with convert, formats, analyze, compare tools |
 | `watch` | fsnotify-based watch mode with configurable debounce, ignore patterns, retry |
 | `dedup` | Duplicate detection via perceptual hashing (dHash + Hamming) |
@@ -98,26 +90,12 @@ Parallel processing via a channel-based worker pool. Configurable via `-j` flag,
 | `batch.go` | `runBatchMode()` — parallel batch conversion with progress bar |
 | `rules_mode.go` | `runRulesMode()`, `runRulesWatch()` |
 | `watch_mode.go` | `runWatchMode()` |
-| `serve_mode.go` | `runServeMode()` — wires DB, auth, billing, OAuth, SPA when `DATABASE_URL` is set |
+| `serve_mode.go` | `runServeMode()` — starts simple HTTP server |
 | `mcp_mode.go` | `runMCPMode()` — starts MCP server on stdio |
 | `analysis.go` | `runTreeMode()`, `runSSIMMode()`, `runDedupMode()`, `runContactSheetMode()`, `runPaletteMode()` |
 | `scan_mode.go` | `runScanMode()` — directory scanning with format stats |
 | `stdin.go` | `runStdinMode()` |
 | `helpers.go` | `buildJob()`, `collectFiles()`, `buildOutputPath()`, formatting helpers |
-
-### Web frontend (`web/`)
-
-React 19 + Vite 6 + TypeScript + Tailwind CSS 4. Builds to `web/dist/` which is embedded in the Go binary via `web/embed.go` (`//go:embed all:dist`). Build with `make build-web`. The SPA is served by `spa.go` with index.html fallback for client-side routing. For frontend development, `npm run dev` in `web/` starts Vite with proxy rules that forward `/api` and `/internal` to `http://localhost:8080` (the Go backend).
-
-**Converter store** (`web/src/stores/converter.ts`): Zustand store with `FileEntry[]` array for batch upload support. Each entry tracks its own `id`, `file`, `preview`, `result`, `status` (pending/converting/done/error), `error`, sizes, and dimensions. `activeFileId` controls which file is shown in the preview pane. Conversion runs sequentially through all pending/error entries with per-file progress. Key components: `DropZone` (accepts multiple files, has compact variant for adding more), `FileQueue` (horizontal thumbnail strip with status overlays), `PreviewPane` (reads from active entry), `DownloadButton` (batch convert/download/retry actions).
-
-### Database (`migrations/`)
-
-Postgres schema in `migrations/001_initial.sql` and `002_monthly_api_usage.sql`. Six tables: `users`, `sessions`, `api_keys`, `conversions`, `daily_usage`, `monthly_api_usage`. Migrations run automatically on server startup via `db.Migrate()`.
-
-### API key format
-
-`pxs_` prefix + 64 random hex chars (256-bit entropy). Full key shown once at creation. Only SHA-256 hash stored in DB. Validated via `auth.HashAPIKey()` + DB lookup.
 
 ## Common extension patterns
 

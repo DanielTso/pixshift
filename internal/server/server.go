@@ -4,46 +4,29 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/fs"
+	"image"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"golang.org/x/oauth2"
-
-	"github.com/DanielTso/pixshift/internal/auth"
 	"github.com/DanielTso/pixshift/internal/codec"
-	"github.com/DanielTso/pixshift/internal/db"
+	pixcolor "github.com/DanielTso/pixshift/internal/color"
 	"github.com/DanielTso/pixshift/internal/pipeline"
 )
 
 // Server provides an HTTP API for image conversion.
 type Server struct {
-	// Existing fields (simple mode)
 	Addr         string
 	Registry     *codec.Registry
 	MaxFileSize  int64
-	APIKey       string        // simple mode bearer token
+	APIKey       string        // bearer token auth
 	RateLimit    int           // requests/min per IP (0=off)
 	AllowOrigins string        // CORS allowed origins ("*" default)
 	Timeout      time.Duration // request timeout (60s default)
-
-	// New fields for full mode (DB != nil)
-	DB                  *db.DB
-	StripeWebhookSecret string
-	OAuthConfig         *oauth2.Config
-	SessionSecret       string
-	BaseURL             string
-	WebFS               fs.FS // embedded SPA filesystem (can be nil)
-
-	// webhookEvents tracks processed Stripe event IDs for idempotency.
-	webhookEvents   map[string]time.Time
-	webhookEventsMu sync.Mutex
 }
 
 // ErrorResponse is the structured JSON error returned by the API.
@@ -55,10 +38,9 @@ type ErrorResponse struct {
 // New creates a Server with the given registry and listen address.
 func New(reg *codec.Registry, addr string) *Server {
 	return &Server{
-		Addr:          addr,
-		Registry:      reg,
-		MaxFileSize:   50 << 20, // 50 MB
-		webhookEvents: make(map[string]time.Time),
+		Addr:        addr,
+		Registry:    reg,
+		MaxFileSize: 50 << 20, // 50 MB
 	}
 }
 
@@ -176,13 +158,7 @@ func rateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 
 // Start starts the HTTP server and blocks until ctx is cancelled.
 func (s *Server) Start(ctx context.Context) error {
-	var handler http.Handler
-
-	if s.DB != nil {
-		handler = s.buildFullModeHandler(ctx)
-	} else {
-		handler = s.buildSimpleModeHandler(ctx)
-	}
+	handler := s.buildSimpleModeHandler(ctx)
 
 	timeout := s.Timeout
 	if timeout == 0 {
@@ -216,7 +192,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 }
 
-// buildSimpleModeHandler creates the handler for simple mode (no DB, backward compatible).
+// buildSimpleModeHandler creates the handler for simple mode (backward compatible).
 func (s *Server) buildSimpleModeHandler(ctx context.Context) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
@@ -240,94 +216,6 @@ func (s *Server) buildSimpleModeHandler(ctx context.Context) http.Handler {
 		handler = rateLimitMiddleware(limiter)(handler)
 	}
 	return handler
-}
-
-// buildFullModeHandler creates the handler for full mode (with DB, auth, billing).
-func (s *Server) buildFullModeHandler(ctx context.Context) http.Handler {
-	mux := http.NewServeMux()
-
-	// Shared rate limiter for full mode
-	limiter := NewRateLimiter(60) // default 60/min, overridden per-route by tier
-	go limiter.Cleanup(ctx)
-
-	// --- Public routes (no auth) ---
-	mux.HandleFunc("/health", s.handleHealth)
-
-	// --- API routes (API key auth) ---
-	apiKeyAuth := auth.RequireAPIKey(s.DB)
-	apiRateLimit := s.tierRateLimitMiddleware(limiter, apiKeyRateKey)
-
-	mux.Handle("/api/v1/convert", apiRateLimit(apiKeyAuth(http.HandlerFunc(s.handleAPIConvert))))
-	mux.Handle("/api/v1/palette", apiRateLimit(apiKeyAuth(http.HandlerFunc(s.handleAPIPalette))))
-	mux.Handle("/api/v1/analyze", apiRateLimit(apiKeyAuth(http.HandlerFunc(s.handleAPIAnalyze))))
-	mux.Handle("/api/v1/compare", apiRateLimit(apiKeyAuth(http.HandlerFunc(s.handleAPICompare))))
-	mux.HandleFunc("/api/v1/formats", s.handleFormats)
-
-	// --- Webhook routes (no auth, signature verified internally) ---
-	mux.HandleFunc("/api/webhooks/stripe", s.handleStripeWebhook)
-
-	// --- Web internal routes (session auth) ---
-	sessionAuth := auth.RequireSession(s.DB)
-	webRateLimit := s.tierRateLimitMiddleware(limiter, sessionRateKey)
-
-	mux.Handle("/internal/convert", webRateLimit(sessionAuth(http.HandlerFunc(s.handleWebConvert))))
-	mux.HandleFunc("/internal/formats", s.handleFormats)
-	mux.Handle("/internal/user", sessionAuth(http.HandlerFunc(s.handleGetUser)))
-	mux.Handle("/internal/keys", sessionAuth(http.HandlerFunc(s.handleKeys)))
-	mux.Handle("/internal/keys/", sessionAuth(http.HandlerFunc(s.handleRevokeKey)))
-	mux.Handle("/internal/usage", sessionAuth(http.HandlerFunc(s.handleUsage)))
-
-	// --- Auth routes (no auth, rate limited by IP) ---
-	authRateLimit := s.tierRateLimitMiddleware(limiter, ipRateKey)
-
-	mux.Handle("/internal/auth/signup", authRateLimit(http.HandlerFunc(s.handleSignup)))
-	mux.Handle("/internal/auth/login", authRateLimit(http.HandlerFunc(s.handleLogin)))
-	mux.HandleFunc("/internal/auth/logout", s.handleLogout)
-	mux.HandleFunc("/internal/auth/google", s.handleGoogleOAuth)
-	mux.HandleFunc("/internal/auth/google/callback", s.handleGoogleCallback)
-
-	// --- Billing routes (session auth) ---
-	mux.Handle("/internal/billing/checkout", sessionAuth(http.HandlerFunc(s.handleCheckout)))
-	mux.Handle("/internal/billing/portal", sessionAuth(http.HandlerFunc(s.handlePortal)))
-
-	// --- SPA handler ---
-	if s.WebFS != nil {
-		mux.Handle("/", s.spaHandler())
-	}
-
-	// Apply global middleware
-	var handler http.Handler = mux
-	handler = loggingMiddleware(handler)
-	if s.AllowOrigins != "" {
-		handler = corsMiddleware(s.AllowOrigins)(handler)
-	}
-
-	return handler
-}
-
-// spaHandler serves the embedded SPA filesystem, falling back to index.html
-// for client-side routing.
-func (s *Server) spaHandler() http.Handler {
-	fileServer := http.FileServer(http.FS(s.WebFS))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Try to serve the file directly
-		path := r.URL.Path
-		if path == "/" {
-			path = "/index.html"
-		}
-
-		// Check if file exists in the embedded FS
-		f, err := s.WebFS.Open(strings.TrimPrefix(path, "/"))
-		if err == nil {
-			f.Close()
-			fileServer.ServeHTTP(w, r)
-			return
-		}
-
-		// Fall back to index.html for SPA client-side routing
-		r.URL.Path = "/"
-		fileServer.ServeHTTP(w, r)
-	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -361,7 +249,7 @@ func (s *Server) handleFormats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleConvert is the simple mode conversion handler (backward compatible).
+// handleConvert is the simple mode conversion handler.
 func (s *Server) handleConvert(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
@@ -515,6 +403,130 @@ func (s *Server) handleConvert(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, baseName+outExt))
 
 	http.ServeFile(w, r, outputPath)
+}
+
+// handleSimplePalette handles POST /palette (no auth).
+func (s *Server) handleSimplePalette(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+		return
+	}
+
+	img, _, err := s.decodeUpload(r, "file", s.MaxFileSize)
+	if err != nil {
+		writeError(w, err.status, err.code, err.message)
+		return
+	}
+
+	count := 5
+	if v := r.FormValue("count"); v != "" {
+		if n, e := strconv.Atoi(v); e == nil && n > 0 && n <= 20 {
+			count = n
+		}
+	}
+
+	colors := pixcolor.ExtractPalette(img, count)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"colors": colors,
+	})
+}
+
+// handleSimpleAnalyze handles POST /analyze (no auth).
+func (s *Server) handleSimpleAnalyze(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+		return
+	}
+
+	img, info, err := s.decodeUpload(r, "file", s.MaxFileSize)
+	if err != nil {
+		writeError(w, err.status, err.code, err.message)
+		return
+	}
+
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"width":        width,
+		"height":       height,
+		"format":       string(info.format),
+		"size":         info.size,
+		"aspect_ratio": aspectRatio(width, height),
+	})
+}
+
+// uploadInfo holds metadata about an uploaded file.
+type uploadInfo struct {
+	format codec.Format
+	size   int64
+}
+
+// uploadError is a structured error for upload processing.
+type uploadError struct {
+	status  int
+	code    string
+	message string
+}
+
+// decodeUpload parses a multipart form, extracts the named file field, detects
+// its format, and decodes the image. Returns the decoded image and file info.
+func (s *Server) decodeUpload(r *http.Request, field string, maxSize int64) (image.Image, *uploadInfo, *uploadError) {
+	if e := r.ParseMultipartForm(maxSize); e != nil {
+		return nil, nil, &uploadError{http.StatusBadRequest, "FILE_TOO_LARGE", "failed to parse form: " + e.Error()}
+	}
+
+	file, header, e := r.FormFile(field)
+	if e != nil {
+		return nil, nil, &uploadError{http.StatusBadRequest, "MISSING_FIELD", "missing required field: " + field}
+	}
+	defer file.Close()
+
+	if header.Size > maxSize {
+		return nil, nil, &uploadError{http.StatusBadRequest, "FILE_TOO_LARGE",
+			fmt.Sprintf("file size %d exceeds limit of %d bytes", header.Size, maxSize)}
+	}
+
+	format, e := codec.DetectFormat(file, header.Filename)
+	if e != nil {
+		return nil, nil, &uploadError{http.StatusBadRequest, "INVALID_FORMAT", "unable to detect image format"}
+	}
+
+	dec, e := s.Registry.Decoder(format)
+	if e != nil {
+		return nil, nil, &uploadError{http.StatusBadRequest, "INVALID_FORMAT", fmt.Sprintf("unsupported format: %s", format)}
+	}
+
+	img, e := dec.Decode(file)
+	if e != nil {
+		return nil, nil, &uploadError{http.StatusInternalServerError, "DECODE_FAILED", "failed to decode image"}
+	}
+
+	return img, &uploadInfo{format: format, size: header.Size}, nil
+}
+
+// aspectRatio computes the aspect ratio string for given dimensions.
+func aspectRatio(w, h int) string {
+	if w == 0 || h == 0 {
+		return "0:0"
+	}
+	g := gcd(w, h)
+	rw, rh := w/g, h/g
+	if rw <= 100 && rh <= 100 {
+		return fmt.Sprintf("%d:%d", rw, rh)
+	}
+	return fmt.Sprintf("%.2f", float64(w)/float64(h))
+}
+
+func gcd(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
 }
 
 func contentType(f codec.Format) string {

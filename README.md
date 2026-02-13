@@ -1,17 +1,14 @@
 # Pixshift
 
-Universal image converter — CLI, Web App, Hosted API, and MCP Server. Convert between JPEG, PNG, GIF, WebP, TIFF, BMP, HEIC/HEIF, AVIF, JPEG XL, and RAW camera formats (CR2, NEF, DNG, ARW, RAF, ORF, RW2).
+Universal image converter — CLI, HTTP Server, and MCP Server. Convert between JPEG, PNG, GIF, WebP, TIFF, BMP, HEIC/HEIF, AVIF, JPEG XL, and RAW camera formats (CR2, NEF, DNG, ARW, RAF, ORF, RW2).
 
-## 4 Ways to Use Pixshift
+## 3 Ways to Use Pixshift
 
 | Surface | Description |
 |---------|-------------|
 | **CLI** | `pixshift -f webp photo.heic` — batch convert, watch mode, rules engine |
-| **Web App** | Drag-and-drop converter at [pixshift.dev](https://pixshift.dev) |
-| **Hosted API** | `POST /api/v1/convert` with API key auth and usage tracking |
+| **HTTP Server** | `pixshift serve` — self-hosted conversion API with rate limiting |
 | **MCP Server** | `pixshift mcp` — use from Claude Desktop or any MCP client |
-
-One binary serves everything. Without `DATABASE_URL`, it runs as a simple CLI/server. With a database, it unlocks auth, billing, and the web app.
 
 ## Features
 
@@ -38,11 +35,8 @@ One binary serves everything. Without `DATABASE_URL`, it runs as a simple CLI/se
 - **SSIM comparison** — compare image quality with Structural Similarity Index
 - **Contact sheets** — generate thumbnail grid images from a directory
 - **Directory tree view** — display image files in a tree with sizes and formats
-- **Web application** — React SPA with batch upload, drag-and-drop converter, live preview, and before/after comparison
-- **Hosted API** — REST API with API key auth, tier-based rate limiting, and usage tracking
 - **MCP server** — Model Context Protocol server for AI assistant integration
 - **Go SDK** — embed Pixshift in your own Go applications with a functional options API
-- **Stripe billing** — Starter/Pro/Business tiers with subscription management and annual billing
 - **HTTP server** — REST API with auth, rate limiting, CORS, and full transform support (`pixshift serve`)
 - **JSON output** — machine-readable results for scripting
 - **Stdin/stdout** — pipe-based workflows (`cat img | pixshift -f webp - > out.webp`)
@@ -221,80 +215,54 @@ cat photo.heic | pixshift -f webp - > photo.webp
 Done. 3 converted, 0 failed. Total: 13.1 MB -> 2.7 MB (79% smaller)
 ```
 
-## Web Application
+## HTTP Server
 
-The web app is a React SPA embedded in the Go binary and served at the root path.
-
-**Features:**
-- Batch upload — drop multiple images, thumbnail strip with status indicators, sequential conversion with progress
-- Download All completed files or retry failed ones
-- Drag-and-drop image upload with instant preview
-- Format picker with 8+ output formats
-- Transform panel: quality, resize, filters, watermark
-- Before/after comparison slider
-- Dashboard with usage charts, conversion history, API key management
-- Three tiers: Starter (free, 20/day), Pro ($19/mo, 500/day), Business ($59/mo, unlimited)
-
-**Access:** Visit [pixshift.dev](https://pixshift.dev) or self-host with `DATABASE_URL` set.
-
-## Hosted API
-
-Authenticate with an API key (`pxs_` prefix) via the `X-API-Key` header.
+Self-hosted conversion API with optional authentication and rate limiting:
 
 ```bash
-# Convert an image
-curl -X POST https://pixshift.dev/api/v1/convert \
-  -H "X-API-Key: pxs_your_key_here" \
-  -F "file=@photo.heic" \
-  -F "format=webp" \
-  -F "quality=90" \
-  -o photo.webp
+# Start conversion server (default :8080)
+pixshift serve
+pixshift serve :9090
 
-# With transforms
-curl -X POST https://pixshift.dev/api/v1/convert \
-  -H "X-API-Key: pxs_your_key_here" \
-  -F "file=@photo.jpg" \
-  -F "format=webp" \
-  -F "grayscale=true" \
-  -F "max_dim=1920" \
-  -F "watermark_text=PROOF" \
-  -o out.webp
+# With authentication and rate limiting
+pixshift serve --api-key mysecretkey --rate-limit 30 --cors-origins "*"
 
-# List supported formats
-curl https://pixshift.dev/api/v1/formats
+# Configure timeouts and upload limits
+pixshift serve --request-timeout 120 --max-upload 100
+
+# Convert an image via API
+curl -F "file=@photo.heic" -F "format=webp" -F "quality=90" \
+  http://localhost:8080/convert -o photo.webp
+
+# With authentication
+curl -H "Authorization: Bearer mysecretkey" \
+  -F "file=@photo.heic" -F "format=webp" \
+  http://localhost:8080/convert -o photo.webp
 
 # Extract color palette
-curl -X POST https://pixshift.dev/api/v1/palette \
-  -H "X-API-Key: pxs_your_key_here" \
-  -F "file=@photo.jpg" \
-  -F "count=8"
+curl -X POST -F "file=@photo.jpg" -F "count=8" \
+  http://localhost:8080/palette
 
-# Analyze image metadata
-curl -X POST https://pixshift.dev/api/v1/analyze \
-  -H "X-API-Key: pxs_your_key_here" \
-  -F "file=@photo.jpg"
+# Analyze image
+curl -X POST -F "file=@photo.jpg" \
+  http://localhost:8080/analyze
 
-# Compare two images (SSIM)
-curl -X POST https://pixshift.dev/api/v1/compare \
-  -H "X-API-Key: pxs_your_key_here" \
-  -F "file1=@original.jpg" \
-  -F "file2=@compressed.jpg"
+# List supported formats
+curl http://localhost:8080/formats
+
+# Health check
+curl http://localhost:8080/health
 ```
 
-### API Tiers
+### Server Endpoints
 
-| | Starter | Pro ($19/mo) | Business ($59/mo) |
-|---|---|---|---|
-| Web conversions/day | 20 | 500 | Unlimited |
-| API requests/month | 100 | 5,000 | 50,000 |
-| Max file size | 10 MB | 100 MB | 500 MB |
-| Batch uploads | 1 file | 20 files | 100 files |
-| Rate limit | 10 req/min | 30 req/min | 120 req/min |
-| API keys | 1 | 5 | 20 |
-| MCP integration | — | Included | Included |
-| Annual billing | — | $190/yr (2 mo free) | $590/yr (2 mo free) |
-
-All formats and transforms available on every tier. Manage your subscription and API keys from the [Dashboard](https://pixshift.dev/dashboard).
+| Path | Method | Description |
+|------|--------|-------------|
+| `/convert` | POST | Convert an image (multipart form) |
+| `/palette` | POST | Extract dominant color palette |
+| `/analyze` | POST | Get image dimensions, format, size |
+| `/formats` | GET | List supported decode/encode formats |
+| `/health` | GET | Health check |
 
 ## MCP Server
 
@@ -390,80 +358,6 @@ pixshift --palette --json photo.jpg              # JSON output
 pixshift --scan ~/Pictures
 ```
 
-## HTTP Server (Simple Mode)
-
-For simple self-hosted use without a database:
-
-```bash
-# Start conversion server (default :8080)
-pixshift serve
-pixshift serve :9090
-
-# With authentication and rate limiting
-pixshift serve --api-key mysecretkey --rate-limit 30 --cors-origins "*"
-
-# Configure timeouts and upload limits
-pixshift serve --request-timeout 120 --max-upload 100
-
-# Convert an image via API
-curl -F "file=@photo.heic" -F "format=webp" -F "quality=90" \
-  http://localhost:8080/convert -o photo.webp
-
-# With authentication
-curl -H "Authorization: Bearer mysecretkey" \
-  -F "file=@photo.heic" -F "format=webp" \
-  http://localhost:8080/convert -o photo.webp
-
-# List supported formats
-curl http://localhost:8080/formats
-
-# Health check
-curl http://localhost:8080/health
-```
-
-## Full Mode (Self-Hosted with Database)
-
-Set `DATABASE_URL` to enable auth, billing, web app, and hosted API:
-
-```bash
-export DATABASE_URL="postgres://user:pass@localhost/pixshift?sslmode=disable"
-export SESSION_SECRET="your-random-secret"
-export STRIPE_SECRET_KEY="sk_..."                    # optional
-export STRIPE_PRO_MONTHLY_PRICE_ID="price_..."       # optional
-export STRIPE_PRO_ANNUAL_PRICE_ID="price_..."        # optional
-export STRIPE_BUSINESS_MONTHLY_PRICE_ID="price_..."  # optional
-export STRIPE_BUSINESS_ANNUAL_PRICE_ID="price_..."   # optional
-export STRIPE_WEBHOOK_SECRET="whsec_..."             # optional
-export GOOGLE_CLIENT_ID="..."              # optional
-export GOOGLE_CLIENT_SECRET="..."          # optional
-export BASE_URL="https://pixshift.dev"     # optional
-
-pixshift serve :8080
-```
-
-Routes in full mode:
-
-| Path | Auth | Description |
-|------|------|-------------|
-| `POST /api/v1/convert` | API key | Hosted API conversion |
-| `POST /api/v1/palette` | API key | Extract color palette |
-| `POST /api/v1/analyze` | API key | Image metadata analysis |
-| `POST /api/v1/compare` | API key | SSIM image comparison |
-| `GET /api/v1/formats` | None | List formats |
-| `POST /api/webhooks/stripe` | Signature | Stripe webhooks |
-| `POST /internal/auth/signup` | None | Create account |
-| `POST /internal/auth/login` | None | Login |
-| `POST /internal/auth/logout` | None | Logout |
-| `GET /internal/auth/google` | None | Google OAuth |
-| `POST /internal/convert` | Session | Web UI conversion |
-| `GET /internal/user` | Session | User profile |
-| `GET/POST /internal/keys` | Session | API key management |
-| `GET /internal/usage` | Session | Usage stats |
-| `POST /internal/billing/checkout` | Session | Stripe checkout |
-| `POST /internal/billing/portal` | Session | Billing portal |
-| `GET /health` | None | Health check |
-| `/*` | None | React SPA |
-
 ## Flags
 
 ### Conversion
@@ -531,7 +425,7 @@ Routes in full mode:
 
 | Flag | Description |
 |------|-------------|
-| `--api-key` | Require bearer token authentication (simple mode) |
+| `--api-key` | Require bearer token authentication |
 | `--rate-limit` | Max requests per minute per IP (0 = off) |
 | `--cors-origins` | CORS allowed origins (default: `*`) |
 | `--request-timeout` | Request timeout in seconds (default: 60) |
@@ -666,28 +560,18 @@ pixshift --completion zsh > "${fpath[1]}/_pixshift"
 pixshift --completion fish > ~/.config/fish/completions/pixshift.fish
 ```
 
-## Deployment
-
-### Docker
+## Docker
 
 ```bash
 # Build
 docker build -t pixshift .
 
-# Run (simple mode)
+# Run server
 docker run -p 8080:8080 pixshift
 
-# Run (full mode)
-docker run -p 8080:8080 \
-  -e DATABASE_URL="postgres://..." \
-  -e SESSION_SECRET="..." \
-  -e STRIPE_SECRET_KEY="sk_..." \
-  pixshift
+# Run CLI
+docker run --rm -v $(pwd):/data pixshift -f webp /data/photo.heic
 ```
-
-### DigitalOcean App Platform
-
-The repository includes `.do/app.yaml` for one-click deployment with managed Postgres. See the [deployment guide](https://docs.digitalocean.com/products/app-platform/) for setup.
 
 ## Building
 
@@ -696,9 +580,7 @@ Requires Go 1.24+ and CGO (for HEIC, AVIF, WebP, and JXL).
 **Linux dependencies**: `libwebp-dev`, `libjxl-dev`
 
 ```bash
-make build          # Build Go binary (CLI only)
-make build-web      # Build frontend (requires Node.js 22+)
-make build-all      # Build frontend + Go binary with embedded SPA
+make build          # Build Go binary
 make test           # Run tests
 make lint           # Run linter
 make docker         # Build Docker image

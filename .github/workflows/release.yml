@@ -190,6 +190,9 @@ jobs:
       - name: Rename binary
         run: mv pixshift-linux-${{ matrix.arch }} pixshift && chmod +x pixshift
 
+      - name: Compress man page
+        run: gzip -kf pixshift.1
+
       - name: Build package
         run: |
           if [ "${{ matrix.format }}" = "rpm" ]; then

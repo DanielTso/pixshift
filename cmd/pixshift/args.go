@@ -82,6 +82,12 @@ type options struct {
 	watchDebounce int      // milliseconds
 	watchIgnore   []string // repeatable
 	watchRetry    int
+
+	// v0.7.0 fields
+	scanMode        bool
+	paletteCount    int // --palette N (0 = disabled)
+	smartCropWidth  int
+	smartCropHeight int
 }
 
 func parseArgs(args []string) *options {
@@ -490,6 +496,39 @@ func parseArgs(args []string) *options {
 			}
 			opts.watchRetry = wr
 			i += 2
+		case "--scan":
+			opts.scanMode = true
+			i++
+		case "--palette":
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				if p, err := strconv.Atoi(args[i+1]); err == nil && p > 0 {
+					opts.paletteCount = p
+					i += 2
+				} else {
+					// Next arg is a file, not a count — use default
+					opts.paletteCount = 5
+					i++
+				}
+			} else {
+				opts.paletteCount = 5
+				i++
+			}
+		case "--smart-crop":
+			if i+1 >= len(args) {
+				fatal("missing value for %s (WxH, e.g. 800x600)", args[i])
+			}
+			parts := strings.SplitN(args[i+1], "x", 2)
+			if len(parts) != 2 {
+				fatal("smart-crop must be WxH (e.g. 800x600)")
+			}
+			sw, err1 := strconv.Atoi(parts[0])
+			sh, err2 := strconv.Atoi(parts[1])
+			if err1 != nil || err2 != nil || sw < 1 || sh < 1 {
+				fatal("smart-crop dimensions must be positive integers")
+			}
+			opts.smartCropWidth = sw
+			opts.smartCropHeight = sh
+			i += 2
 		case "mcp":
 			opts.mcpMode = true
 			i++
@@ -522,7 +561,7 @@ func parseArgs(args []string) *options {
 	}
 
 	needsInput := !opts.watchMode && opts.configFile == "" && opts.completionSh == "" &&
-		opts.serveAddr == "" && len(opts.ssimFiles) == 0 && !opts.mcpMode
+		opts.serveAddr == "" && len(opts.ssimFiles) == 0 && !opts.mcpMode && !opts.scanMode
 	if len(opts.inputs) == 0 && needsInput {
 		fatal("no input files or directories specified")
 	}
@@ -537,10 +576,12 @@ Usage:
   pixshift [options] <files or directories...>
   pixshift serve [addr]
   pixshift mcp
+  pixshift --scan [dir]
   pixshift --tree [dir]
   pixshift --dedup [dir]
   pixshift --ssim <file1> <file2>
   pixshift --contact-sheet [dir]
+  pixshift --palette [N] <files...>
 
 Conversion options:
   -f, --format <fmt>        Output format: jpg, png, gif, webp, tiff, bmp, heic, avif
@@ -559,6 +600,7 @@ Conversion options:
 
 Image transforms:
       --auto-rotate          Auto-rotate based on EXIF orientation
+      --smart-crop <WxH>    Smart crop to target dimensions (entropy-based)
       --crop <WxH>           Crop to exact pixel dimensions (e.g. 800x600)
       --crop-ratio <W:H>     Crop to aspect ratio (e.g. 16:9)
       --crop-gravity <pos>   Crop anchor: center, north, south, east, west
@@ -591,6 +633,8 @@ Encoding options:
       --lossless             WebP lossless mode
 
 Analysis tools:
+      --scan                Scan directory: count images by format with sizes
+      --palette [N]         Extract color palette (default: 5 colors)
       --tree                Show directory tree of supported images
       --dedup               Find duplicate images using perceptual hashing
       --dedup-threshold <N> Hamming distance threshold (default: 10)
@@ -655,6 +699,9 @@ Examples:
   pixshift --contact-sheet -o output/ photos/    Generate contact sheet
   pixshift --json -f webp photos/                JSON output for scripting
   pixshift --backup -f webp photos/              Backup originals first
+  pixshift --scan ~/Pictures                     Scan and count images
+  pixshift --palette photos/landscape.jpg        Extract color palette
+  pixshift --smart-crop 800x600 -f webp photo.jpg Smart crop to 800x600
   pixshift serve :9090                           Start HTTP server on port 9090
   cat photo.heic | pixshift -f webp - > out.webp Stdin/stdout pipeline
 `)

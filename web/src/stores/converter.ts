@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import { convertImage } from '../api/convert';
 import type { ConvertOptions } from '../api/convert';
 
+interface Dimensions {
+  width: number;
+  height: number;
+}
+
 interface ConverterState {
   file: File | null;
   preview: string | null;
@@ -13,6 +18,8 @@ interface ConverterState {
   error: string | null;
   originalSize: number;
   resultSize: number;
+  imageDimensions: Dimensions | null;
+  resultDimensions: Dimensions | null;
   setFile: (file: File | null) => void;
   setFormat: (format: string) => void;
   setOptions: (options: Partial<Omit<ConvertOptions, 'format'>>) => void;
@@ -35,6 +42,8 @@ export const useConverterStore = create<ConverterState>((set, get) => ({
   error: null,
   originalSize: 0,
   resultSize: 0,
+  imageDimensions: null,
+  resultDimensions: null,
 
   setFile: (file) => {
     const prev = get().preview;
@@ -44,9 +53,14 @@ export const useConverterStore = create<ConverterState>((set, get) => ({
 
     if (file) {
       const preview = URL.createObjectURL(file);
-      set({ file, preview, result: null, resultUrl: null, error: null, originalSize: file.size, resultSize: 0 });
+      const img = new Image();
+      img.onload = () => {
+        set({ imageDimensions: { width: img.naturalWidth, height: img.naturalHeight } });
+      };
+      img.src = preview;
+      set({ file, preview, result: null, resultUrl: null, error: null, originalSize: file.size, resultSize: 0, imageDimensions: null, resultDimensions: null });
     } else {
-      set({ file: null, preview: null, result: null, resultUrl: null, error: null, originalSize: 0, resultSize: 0 });
+      set({ file: null, preview: null, result: null, resultUrl: null, error: null, originalSize: 0, resultSize: 0, imageDimensions: null, resultDimensions: null });
     }
   },
 
@@ -63,7 +77,12 @@ export const useConverterStore = create<ConverterState>((set, get) => ({
     try {
       const blob = await convertImage(file, { format, ...options });
       const resultUrl = URL.createObjectURL(blob);
-      set({ result: blob, resultUrl, converting: false, resultSize: blob.size });
+      const img = new Image();
+      img.onload = () => {
+        set({ resultDimensions: { width: img.naturalWidth, height: img.naturalHeight } });
+      };
+      img.src = resultUrl;
+      set({ result: blob, resultUrl, converting: false, resultSize: blob.size, resultDimensions: null });
     } catch (err) {
       set({ error: (err as Error).message, converting: false });
     }
@@ -85,6 +104,8 @@ export const useConverterStore = create<ConverterState>((set, get) => ({
       error: null,
       originalSize: 0,
       resultSize: 0,
+      imageDimensions: null,
+      resultDimensions: null,
     });
   },
 }));

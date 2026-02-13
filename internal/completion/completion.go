@@ -57,19 +57,22 @@ func GenerateBash() string {
             COMPREPLY=( $(compgen -f -- "${cur}") )
             return 0
             ;;
-        --template|--crop|--crop-ratio|--watermark|--watermark-color|--watermark-bg)
+        --template|--crop|--crop-ratio|--smart-crop|--watermark|--watermark-color|--watermark-bg)
+            return 0
+            ;;
+        --palette)
             return 0
             ;;
     esac
 
     if [[ "${cur}" == --* ]]; then
-        opts="--format --quality --jobs --output --recursive --preserve-metadata --watch --config --overwrite --dry-run --verbose --version --help --width --height --max-dim --strip-metadata --template --completion --auto-rotate --crop --crop-ratio --crop-gravity --watermark --watermark-pos --watermark-opacity --preset --backup --json --tree --dedup --dedup-threshold --ssim --contact-sheet --contact-cols --contact-size --grayscale --sepia --brightness --contrast --sharpen --blur --invert --progressive --png-compression --webp-method --lossless --watermark-size --watermark-color --watermark-bg --interpolation --api-key --rate-limit --cors-origins --request-timeout --max-upload --watch-debounce --watch-ignore --watch-retry"
+        opts="--format --quality --jobs --output --recursive --preserve-metadata --watch --config --overwrite --dry-run --verbose --version --help --width --height --max-dim --strip-metadata --template --completion --auto-rotate --crop --crop-ratio --crop-gravity --smart-crop --watermark --watermark-pos --watermark-opacity --preset --backup --json --tree --scan --dedup --dedup-threshold --ssim --contact-sheet --contact-cols --contact-size --palette --grayscale --sepia --brightness --contrast --sharpen --blur --invert --progressive --png-compression --webp-method --lossless --watermark-size --watermark-color --watermark-bg --interpolation --api-key --rate-limit --cors-origins --request-timeout --max-upload --watch-debounce --watch-ignore --watch-retry"
         COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
         return 0
     fi
 
     if [[ "${cur}" == -* ]]; then
-        opts="-f -q -j -o -r -m -w -c -v -V -h -s --format --quality --jobs --output --recursive --preserve-metadata --watch --config --overwrite --dry-run --verbose --version --help --width --height --max-dim --strip-metadata --template --completion --auto-rotate --crop --crop-ratio --crop-gravity --watermark --watermark-pos --watermark-opacity --preset --backup --json --tree --dedup --dedup-threshold --ssim --contact-sheet --contact-cols --contact-size --grayscale --sepia --brightness --contrast --sharpen --blur --invert --progressive --png-compression --webp-method --lossless --watermark-size --watermark-color --watermark-bg --interpolation --api-key --rate-limit --cors-origins --request-timeout --max-upload --watch-debounce --watch-ignore --watch-retry"
+        opts="-f -q -j -o -r -m -w -c -v -V -h -s --format --quality --jobs --output --recursive --preserve-metadata --watch --config --overwrite --dry-run --verbose --version --help --width --height --max-dim --strip-metadata --template --completion --auto-rotate --crop --crop-ratio --crop-gravity --smart-crop --watermark --watermark-pos --watermark-opacity --preset --backup --json --tree --scan --dedup --dedup-threshold --ssim --contact-sheet --contact-cols --contact-size --palette --grayscale --sepia --brightness --contrast --sharpen --blur --invert --progressive --png-compression --webp-method --lossless --watermark-size --watermark-color --watermark-bg --interpolation --api-key --rate-limit --cors-origins --request-timeout --max-upload --watch-debounce --watch-ignore --watch-retry"
         COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
         return 0
     fi
@@ -134,6 +137,9 @@ _pixshift() {
         '--contact-sheet[generate a contact sheet]' \
         '--contact-cols[number of columns in contact sheet]:columns:' \
         '--contact-size[thumbnail size in contact sheet]:size:' \
+        '--scan[scan directory and count images by format]' \
+        '--palette[extract color palette]:count:' \
+        '--smart-crop[smart crop to WxH dimensions (entropy-based)]:dimensions:' \
         '--grayscale[convert image to grayscale]' \
         '--sepia[apply sepia tone filter]:intensity:' \
         '--brightness[adjust brightness]:value:' \
@@ -277,6 +283,17 @@ complete -c pixshift -l contact-cols -x -d 'Number of columns in contact sheet'
 
 # Contact size flag
 complete -c pixshift -l contact-size -x -d 'Thumbnail size in contact sheet'
+
+# v0.7.0 flags
+
+# Scan flag
+complete -c pixshift -l scan -d 'Scan directory and count images by format'
+
+# Palette flag
+complete -c pixshift -l palette -x -d 'Extract color palette (number of colors)'
+
+# Smart crop flag
+complete -c pixshift -l smart-crop -x -d 'Smart crop to WxH dimensions (entropy-based)'
 
 # v0.4.0 flags
 

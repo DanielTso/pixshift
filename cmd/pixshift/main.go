@@ -91,6 +91,18 @@ func main() {
 		return
 	}
 
+	// Scan mode
+	if opts.scanMode {
+		runScanMode(opts)
+		return
+	}
+
+	// Palette mode
+	if opts.paletteCount > 0 {
+		runPaletteMode(registry, opts)
+		return
+	}
+
 	// Tree mode
 	if opts.treeMode {
 		runTreeMode(opts)

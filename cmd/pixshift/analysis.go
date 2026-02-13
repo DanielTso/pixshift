@@ -6,8 +6,10 @@ import (
 	"image/jpeg"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/DanielTso/pixshift/internal/codec"
+	pixcolor "github.com/DanielTso/pixshift/internal/color"
 	"github.com/DanielTso/pixshift/internal/contact"
 	"github.com/DanielTso/pixshift/internal/dedup"
 	"github.com/DanielTso/pixshift/internal/ssim"
@@ -209,4 +211,53 @@ func runContactSheetMode(reg *codec.Registry, opts *options) {
 
 	fmt.Printf("Contact sheet: %s (%d images, %dx%d)\n",
 		outPath, len(entries), sheet.Bounds().Dx(), sheet.Bounds().Dy())
+}
+
+func runPaletteMode(reg *codec.Registry, opts *options) {
+	files := collectFiles(opts.inputs, opts.recursive)
+	if len(files) == 0 {
+		fatal("no supported image files found")
+	}
+
+	count := opts.paletteCount
+	if count < 1 {
+		count = 5
+	}
+
+	if opts.jsonOutput {
+		type fileResult struct {
+			File   string          `json:"file"`
+			Colors []pixcolor.Color `json:"colors"`
+		}
+		var results []fileResult
+		for _, f := range files {
+			colors, err := pixcolor.ExtractPaletteFromFile(f, count, reg)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "skip %s: %v\n", f, err)
+				continue
+			}
+			results = append(results, fileResult{File: f, Colors: colors})
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(results)
+		return
+	}
+
+	for _, f := range files {
+		colors, err := pixcolor.ExtractPaletteFromFile(f, count, reg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "skip %s: %v\n", f, err)
+			continue
+		}
+		fmt.Printf("%s:\n", f)
+		for _, c := range colors {
+			bars := int(c.Percentage / 5)
+			if bars < 1 {
+				bars = 1
+			}
+			fmt.Printf("  %s (%5.1f%%) %s\n", c.Hex, c.Percentage, strings.Repeat("\u2588", bars))
+		}
+		fmt.Println()
+	}
 }

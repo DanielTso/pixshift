@@ -30,6 +30,10 @@ type Job struct {
 	WatermarkBg      string
 	BackupOriginal   bool
 
+	// v0.7.0 fields
+	SmartCropWidth  int
+	SmartCropHeight int
+
 	// v0.4.0 fields
 	Grayscale     bool
 	Sepia         float64 // 0=off, 0.0-1.0 intensity

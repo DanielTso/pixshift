@@ -26,6 +26,8 @@ func buildJob(opts *options, inputPath, outputPath string, outputFormat codec.Fo
 		Height:           opts.height,
 		MaxDim:           opts.maxDim,
 		AutoRotate:       opts.autoRotate,
+		SmartCropWidth:   opts.smartCropWidth,
+		SmartCropHeight:  opts.smartCropHeight,
 		CropWidth:        opts.cropWidth,
 		CropHeight:       opts.cropHeight,
 		CropAspectRatio:  opts.cropRatio,
@@ -62,6 +64,8 @@ func applyOptsToJob(opts *options, job *pipeline.Job) {
 	job.MaxDim = opts.maxDim
 	job.StripMetadata = opts.stripMetadata
 	job.AutoRotate = opts.autoRotate
+	job.SmartCropWidth = opts.smartCropWidth
+	job.SmartCropHeight = opts.smartCropHeight
 	job.CropWidth = opts.cropWidth
 	job.CropHeight = opts.cropHeight
 	job.CropAspectRatio = opts.cropRatio

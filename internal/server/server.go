@@ -184,6 +184,8 @@ func (s *Server) buildSimpleModeHandler(ctx context.Context) http.Handler {
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/formats", s.handleFormats)
 	mux.HandleFunc("/convert", s.handleConvert)
+	mux.HandleFunc("/palette", s.handleSimplePalette)
+	mux.HandleFunc("/analyze", s.handleSimpleAnalyze)
 
 	var handler http.Handler = mux
 	handler = loggingMiddleware(handler)
@@ -217,6 +219,9 @@ func (s *Server) buildFullModeHandler(ctx context.Context) http.Handler {
 	apiRateLimit := s.tierRateLimitMiddleware(limiter, apiKeyRateKey)
 
 	mux.Handle("/api/v1/convert", apiRateLimit(apiKeyAuth(http.HandlerFunc(s.handleAPIConvert))))
+	mux.Handle("/api/v1/palette", apiRateLimit(apiKeyAuth(http.HandlerFunc(s.handleAPIPalette))))
+	mux.Handle("/api/v1/analyze", apiRateLimit(apiKeyAuth(http.HandlerFunc(s.handleAPIAnalyze))))
+	mux.Handle("/api/v1/compare", apiRateLimit(apiKeyAuth(http.HandlerFunc(s.handleAPICompare))))
 	mux.HandleFunc("/api/v1/formats", s.handleFormats)
 
 	// --- Webhook routes (no auth, signature verified internally) ---

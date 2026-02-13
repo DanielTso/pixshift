@@ -200,6 +200,11 @@ func transformImage(img image.Image, job Job) image.Image {
 		img = transform.AutoRotate(img, job.EXIFOrientation)
 	}
 
+	// Smart crop (entropy-based)
+	if job.SmartCropWidth > 0 && job.SmartCropHeight > 0 {
+		img = transform.SmartCrop(img, job.SmartCropWidth, job.SmartCropHeight)
+	}
+
 	// Crop if requested
 	if job.CropWidth > 0 || job.CropHeight > 0 || job.CropAspectRatio != "" {
 		img = transform.Crop(img, transform.CropOptions{

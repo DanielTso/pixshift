@@ -9,11 +9,28 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
+const mimeToLabel: Record<string, string> = {
+  'image/jpeg': 'JPEG',
+  'image/png': 'PNG',
+  'image/webp': 'WebP',
+  'image/avif': 'AVIF',
+  'image/heic': 'HEIC',
+  'image/heif': 'HEIF',
+  'image/tiff': 'TIFF',
+  'image/gif': 'GIF',
+  'image/jxl': 'JXL',
+  'image/bmp': 'BMP',
+  'image/svg+xml': 'SVG',
+};
+
 export default function PreviewPane() {
+  const file = useConverterStore((s) => s.file);
   const preview = useConverterStore((s) => s.preview);
   const resultUrl = useConverterStore((s) => s.resultUrl);
   const originalSize = useConverterStore((s) => s.originalSize);
   const resultSize = useConverterStore((s) => s.resultSize);
+  const imageDimensions = useConverterStore((s) => s.imageDimensions);
+  const resultDimensions = useConverterStore((s) => s.resultDimensions);
   const [sliderPos, setSliderPos] = useState(50);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -41,18 +58,19 @@ export default function PreviewPane() {
 
   const hasResult = !!resultUrl;
   const ratio = resultSize > 0 ? ((1 - resultSize / originalSize) * 100).toFixed(1) : null;
+  const formatType = file?.type ? (mimeToLabel[file.type] || file.type.replace('image/', '').toUpperCase()) : null;
 
   return (
     <div className="flex flex-col gap-3">
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-xl border border-navy-700/50 bg-navy-950"
-        style={{ minHeight: '300px' }}
+        style={{ minHeight: '300px', maxHeight: '500px' }}
       >
         {hasResult ? (
           <>
             {/* After image (full) */}
-            <img src={resultUrl} alt="Converted" className="block w-full" draggable={false} />
+            <img src={resultUrl} alt="Converted" className="block max-h-[500px] w-full object-contain" draggable={false} />
 
             {/* Before image (clipped) */}
             <div
@@ -62,7 +80,7 @@ export default function PreviewPane() {
               <img
                 src={preview}
                 alt="Original"
-                className="block w-full"
+                className="block max-h-[500px] w-full object-contain"
                 style={{ width: containerRef.current ? `${containerRef.current.offsetWidth}px` : '100%' }}
                 draggable={false}
               />
@@ -92,23 +110,30 @@ export default function PreviewPane() {
             </div>
           </>
         ) : (
-          <img src={preview} alt="Preview" className="block w-full" />
+          <img src={preview} alt="Preview" className="block max-h-[500px] w-full object-contain" />
         )}
       </div>
 
-      {/* Size info */}
-      <div className="flex items-center justify-center gap-6 text-sm">
-        <span className="text-navy-400">
-          Original: <span className="text-navy-200">{formatBytes(originalSize)}</span>
-        </span>
-        {resultSize > 0 && (
+      {/* Metadata bar */}
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-navy-400">
+        {imageDimensions && <span>{imageDimensions.width} x {imageDimensions.height}</span>}
+        {formatType && (
           <>
-            <span className="text-navy-400">
-              Converted: <span className="text-navy-200">{formatBytes(resultSize)}</span>
-            </span>
+            <span className="text-navy-600">&bull;</span>
+            <span>{formatType}</span>
+          </>
+        )}
+        <span className="text-navy-600">&bull;</span>
+        <span>{formatBytes(originalSize)}</span>
+        {resultSize > 0 && resultDimensions && (
+          <>
+            <span className="text-navy-600">&rarr;</span>
+            <span className="text-accent">{resultDimensions.width} x {resultDimensions.height}</span>
+            <span className="text-navy-600">&bull;</span>
+            <span className="text-accent">{formatBytes(resultSize)}</span>
             {ratio && (
               <span className={`font-medium ${Number(ratio) > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {Number(ratio) > 0 ? `-${ratio}%` : `+${Math.abs(Number(ratio))}%`}
+                ({Number(ratio) > 0 ? `-${ratio}%` : `+${Math.abs(Number(ratio))}%`})
               </span>
             )}
           </>

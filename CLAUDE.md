@@ -110,3 +110,7 @@ Postgres schema in `migrations/001_initial.sql`. Five tables: `users`, `sessions
 ## Build-time version injection
 
 Version, commit, and date are injected via ldflags — see `Makefile` and `internal/version/`. Don't hardcode version strings.
+
+## Development history
+
+See `CHATLOG.md` for a detailed log of every development session, what was built, issues resolved, and agent team structure used for each version.

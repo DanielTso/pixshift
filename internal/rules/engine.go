@@ -7,6 +7,7 @@ import (
 	"github.com/DanielTso/pixshift/internal/pipeline"
 )
 
+
 const defaultQuality = 92
 
 // Engine matches files against rules to generate conversion jobs.
@@ -51,7 +52,43 @@ func (e *Engine) Match(filePath string, inputFormat codec.Format) *pipeline.Job 
 			InputFormat:      inputFormat,
 			OutputFormat:     rule.OutputFormat,
 			Quality:          quality,
-			PreserveMetadata: e.Metadata,
+			PreserveMetadata: e.Metadata || rule.Rule.PreserveMetadata,
+			StripMetadata:    rule.Rule.StripMetadata,
+
+			// Transforms
+			Width:            rule.Rule.Width,
+			Height:           rule.Rule.Height,
+			MaxDim:           rule.Rule.MaxDim,
+			AutoRotate:       rule.Rule.AutoRotate,
+			CropWidth:        rule.Rule.CropWidth,
+			CropHeight:       rule.Rule.CropHeight,
+			CropAspectRatio:  rule.Rule.CropRatio,
+			CropGravity:      rule.Rule.CropGravity,
+			WatermarkText:    rule.Rule.WatermarkText,
+			WatermarkPos:     rule.Rule.WatermarkPos,
+			WatermarkOpacity: rule.Rule.WatermarkOpacity,
+			WatermarkSize:    rule.Rule.WatermarkSize,
+			WatermarkColor:   rule.Rule.WatermarkColor,
+			WatermarkBg:      rule.Rule.WatermarkBg,
+
+			// Filters
+			Grayscale:  rule.Rule.Grayscale,
+			Sharpen:    rule.Rule.Sharpen,
+			Invert:     rule.Rule.Invert,
+			Sepia:      rule.Rule.Sepia,
+			Brightness: rule.Rule.Brightness,
+			Contrast:   rule.Rule.Contrast,
+			Blur:       rule.Rule.Blur,
+
+			// Encoding
+			Interpolation: rule.Rule.Interpolation,
+			EncodeOpts: codec.EncodeOptions{
+				Quality:     quality,
+				Progressive: rule.Rule.Progressive,
+				Compression: rule.Rule.PngCompression,
+				WebPMethod:  rule.Rule.WebpMethod,
+				Lossless:    rule.Rule.Lossless,
+			},
 		}
 	}
 	return nil

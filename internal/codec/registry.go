@@ -90,6 +90,16 @@ func ParseFormat(s string) (Format, error) {
 		return NEF, nil
 	case "dng":
 		return DNG, nil
+	case "jxl", "jpegxl":
+		return JXL, nil
+	case "arw":
+		return ARW, nil
+	case "raf":
+		return RAF, nil
+	case "orf":
+		return ORF, nil
+	case "rw2":
+		return RW2, nil
 	default:
 		return "", fmt.Errorf("unsupported format: %q", s)
 	}
@@ -107,5 +117,6 @@ func DefaultRegistry() *Registry {
 	registerBMP(r)
 	registerAVIF(r)
 	registerRAW(r)
+	registerJXL(r)
 	return r
 }

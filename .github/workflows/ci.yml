@@ -17,6 +17,8 @@ jobs:
             runner: ubuntu-latest
           - os: macos
             runner: macos-latest
+          - os: macos-intel
+            runner: macos-13
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -29,7 +31,13 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install webp
       - name: Test
-        run: go test ./...
+        run: go test -coverprofile=coverage.out ./...
+      - name: Upload coverage
+        if: matrix.os == 'linux'
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
       - name: Build
         run: make build
 

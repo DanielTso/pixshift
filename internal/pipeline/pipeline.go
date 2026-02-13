@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"image"
 	"io"
 	"os"
 
@@ -84,77 +85,63 @@ func (p *Pipeline) Execute(job Job) (inputSize, outputSize int64, err error) {
 		return inputSize, 0, err
 	}
 
-	// Decode
-	img, err := dec.Decode(f)
-	if err != nil {
-		return inputSize, 0, fmt.Errorf("decode %s: %w", inputFormat, err)
-	}
-
-	// Auto-rotate based on EXIF orientation
-	if job.AutoRotate && job.EXIFOrientation > 1 {
-		img = transform.AutoRotate(img, job.EXIFOrientation)
-	}
-
-	// Crop if requested
-	if job.CropWidth > 0 || job.CropHeight > 0 || job.CropAspectRatio != "" {
-		img = transform.Crop(img, transform.CropOptions{
-			Width:       job.CropWidth,
-			Height:      job.CropHeight,
-			AspectRatio: job.CropAspectRatio,
-			Gravity:     job.CropGravity,
-		})
-	}
-
-	// Resize if requested
-	if job.Width > 0 || job.Height > 0 || job.MaxDim > 0 {
-		img = resize.Resize(img, resize.ResizeOptions{
-			Width:         job.Width,
-			Height:        job.Height,
-			MaxDim:        job.MaxDim,
-			Interpolation: job.Interpolation,
-		})
-	}
-
-	// Watermark if requested
-	if job.WatermarkText != "" {
-		img = transform.ApplyWatermark(img, transform.WatermarkOptions{
-			Text:     job.WatermarkText,
-			Position: job.WatermarkPos,
-			Opacity:  job.WatermarkOpacity,
-			FontSize: job.WatermarkSize,
-			Color:    job.WatermarkColor,
-			BgColor:  job.WatermarkBg,
-		})
-	}
-
-	// Apply filters (fixed order: brightness → contrast → sharpen → blur → grayscale → sepia → invert)
-	if job.Brightness != 0 {
-		img = transform.Brightness(img, job.Brightness)
-	}
-	if job.Contrast != 0 {
-		img = transform.Contrast(img, job.Contrast)
-	}
-	if job.Sharpen {
-		img = transform.Sharpen(img)
-	}
-	if job.Blur > 0 {
-		img = transform.Blur(img, job.Blur)
-	}
-	if job.Grayscale {
-		img = transform.Grayscale(img)
-	}
-	if job.Sepia > 0 {
-		img = transform.Sepia(img, job.Sepia)
-	}
-	if job.Invert {
-		img = transform.Invert(img)
-	}
-
 	// Get encoder
 	enc, err := p.Registry.Encoder(job.OutputFormat)
 	if err != nil {
 		return inputSize, 0, err
 	}
+
+	// Check for multi-frame support
+	mfDec, isMultiFrame := dec.(codec.MultiFrameDecoder)
+	mfEnc, canEncodeMultiFrame := enc.(codec.MultiFrameEncoder)
+
+	if isMultiFrame && canEncodeMultiFrame {
+		// Multi-frame path
+		anim, decErr := mfDec.DecodeAll(f)
+		if decErr != nil {
+			return inputSize, 0, fmt.Errorf("decode animated %s: %w", inputFormat, decErr)
+		}
+
+		if len(anim.Frames) > 1 {
+			// Process each frame
+			for i, frame := range anim.Frames {
+				anim.Frames[i] = transformImage(frame, job)
+			}
+
+			// Create output file
+			out, createErr := os.Create(job.OutputPath)
+			if createErr != nil {
+				return inputSize, 0, fmt.Errorf("create %s: %w", job.OutputPath, createErr)
+			}
+			defer out.Close()
+
+			if encErr := mfEnc.EncodeAll(out, anim); encErr != nil {
+				os.Remove(job.OutputPath)
+				return inputSize, 0, fmt.Errorf("encode animated %s: %w", job.OutputFormat, encErr)
+			}
+			out.Close()
+
+			// Get output file size
+			outInfo, outStatErr := os.Stat(job.OutputPath)
+			if outStatErr == nil {
+				outputSize = outInfo.Size()
+			}
+			return inputSize, outputSize, nil
+		}
+		// Single frame animated image - fall through to normal path
+		// Reset file position for normal decode
+		if _, seekErr := f.Seek(0, 0); seekErr != nil {
+			return inputSize, 0, fmt.Errorf("seek: %w", seekErr)
+		}
+	}
+
+	// Normal single-frame path
+	img, err := dec.Decode(f)
+	if err != nil {
+		return inputSize, 0, fmt.Errorf("decode %s: %w", inputFormat, err)
+	}
+
+	img = transformImage(img, job)
 
 	// Create output file
 	out, err := os.Create(job.OutputPath)
@@ -204,6 +191,71 @@ func (p *Pipeline) Execute(job Job) (inputSize, outputSize int64, err error) {
 	}
 
 	return inputSize, outputSize, nil
+}
+
+// transformImage applies all transforms to a single image frame.
+func transformImage(img image.Image, job Job) image.Image {
+	// Auto-rotate based on EXIF orientation
+	if job.AutoRotate && job.EXIFOrientation > 1 {
+		img = transform.AutoRotate(img, job.EXIFOrientation)
+	}
+
+	// Crop if requested
+	if job.CropWidth > 0 || job.CropHeight > 0 || job.CropAspectRatio != "" {
+		img = transform.Crop(img, transform.CropOptions{
+			Width:       job.CropWidth,
+			Height:      job.CropHeight,
+			AspectRatio: job.CropAspectRatio,
+			Gravity:     job.CropGravity,
+		})
+	}
+
+	// Resize if requested
+	if job.Width > 0 || job.Height > 0 || job.MaxDim > 0 {
+		img = resize.Resize(img, resize.ResizeOptions{
+			Width:         job.Width,
+			Height:        job.Height,
+			MaxDim:        job.MaxDim,
+			Interpolation: job.Interpolation,
+		})
+	}
+
+	// Watermark if requested
+	if job.WatermarkText != "" {
+		img = transform.ApplyWatermark(img, transform.WatermarkOptions{
+			Text:     job.WatermarkText,
+			Position: job.WatermarkPos,
+			Opacity:  job.WatermarkOpacity,
+			FontSize: job.WatermarkSize,
+			Color:    job.WatermarkColor,
+			BgColor:  job.WatermarkBg,
+		})
+	}
+
+	// Apply filters (fixed order: brightness -> contrast -> sharpen -> blur -> grayscale -> sepia -> invert)
+	if job.Brightness != 0 {
+		img = transform.Brightness(img, job.Brightness)
+	}
+	if job.Contrast != 0 {
+		img = transform.Contrast(img, job.Contrast)
+	}
+	if job.Sharpen {
+		img = transform.Sharpen(img)
+	}
+	if job.Blur > 0 {
+		img = transform.Blur(img, job.Blur)
+	}
+	if job.Grayscale {
+		img = transform.Grayscale(img)
+	}
+	if job.Sepia > 0 {
+		img = transform.Sepia(img, job.Sepia)
+	}
+	if job.Invert {
+		img = transform.Invert(img)
+	}
+
+	return img
 }
 
 // copyFile copies src to dst.

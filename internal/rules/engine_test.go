@@ -136,3 +136,194 @@ func TestEngine_GlobNoMatch(t *testing.T) {
 		t.Errorf("expected no glob match for .png file, got %+v", job)
 	}
 }
+
+func TestMatch_WithTransforms(t *testing.T) {
+	cfg := &Config{
+		Rules: []Rule{
+			{
+				Format:      "jpeg",
+				Output:      "webp",
+				Quality:     85,
+				Grayscale:   true,
+				Sharpen:     true,
+				MaxDim:      1920,
+				CropRatio:   "16:9",
+				CropGravity: "center",
+			},
+		},
+	}
+	parsed, err := ParseRules(cfg)
+	if err != nil {
+		t.Fatalf("ParseRules: %v", err)
+	}
+	engine := NewEngine(parsed)
+	job := engine.Match("test.jpg", codec.JPEG)
+	if job == nil {
+		t.Fatal("expected match, got nil")
+	}
+	if !job.Grayscale {
+		t.Error("Grayscale should be true")
+	}
+	if !job.Sharpen {
+		t.Error("Sharpen should be true")
+	}
+	if job.MaxDim != 1920 {
+		t.Errorf("MaxDim = %d, want 1920", job.MaxDim)
+	}
+	if job.CropAspectRatio != "16:9" {
+		t.Errorf("CropAspectRatio = %q, want 16:9", job.CropAspectRatio)
+	}
+	if job.CropGravity != "center" {
+		t.Errorf("CropGravity = %q, want center", job.CropGravity)
+	}
+	if job.Quality != 85 {
+		t.Errorf("Quality = %d, want 85", job.Quality)
+	}
+}
+
+func TestMatch_WithFilters(t *testing.T) {
+	cfg := &Config{
+		Rules: []Rule{
+			{
+				Format:     "jpeg",
+				Output:     "png",
+				Invert:     true,
+				Sepia:      0.5,
+				Brightness: 10,
+				Contrast:   -5,
+				Blur:       2.5,
+			},
+		},
+	}
+	parsed, err := ParseRules(cfg)
+	if err != nil {
+		t.Fatalf("ParseRules: %v", err)
+	}
+	engine := NewEngine(parsed)
+	job := engine.Match("photo.jpg", codec.JPEG)
+	if job == nil {
+		t.Fatal("expected match, got nil")
+	}
+	if !job.Invert {
+		t.Error("Invert should be true")
+	}
+	if job.Sepia != 0.5 {
+		t.Errorf("Sepia = %f, want 0.5", job.Sepia)
+	}
+	if job.Brightness != 10 {
+		t.Errorf("Brightness = %f, want 10", job.Brightness)
+	}
+	if job.Contrast != -5 {
+		t.Errorf("Contrast = %f, want -5", job.Contrast)
+	}
+	if job.Blur != 2.5 {
+		t.Errorf("Blur = %f, want 2.5", job.Blur)
+	}
+}
+
+func TestMatch_WithEncodingOptions(t *testing.T) {
+	cfg := &Config{
+		Rules: []Rule{
+			{
+				Format:         "jpeg",
+				Output:         "webp",
+				Quality:        90,
+				Lossless:       true,
+				WebpMethod:     4,
+				Interpolation:  "bilinear",
+				StripMetadata:  true,
+			},
+		},
+	}
+	parsed, err := ParseRules(cfg)
+	if err != nil {
+		t.Fatalf("ParseRules: %v", err)
+	}
+	engine := NewEngine(parsed)
+	job := engine.Match("img.jpg", codec.JPEG)
+	if job == nil {
+		t.Fatal("expected match, got nil")
+	}
+	if !job.EncodeOpts.Lossless {
+		t.Error("EncodeOpts.Lossless should be true")
+	}
+	if job.EncodeOpts.WebPMethod != 4 {
+		t.Errorf("EncodeOpts.WebPMethod = %d, want 4", job.EncodeOpts.WebPMethod)
+	}
+	if job.Interpolation != "bilinear" {
+		t.Errorf("Interpolation = %q, want bilinear", job.Interpolation)
+	}
+	if !job.StripMetadata {
+		t.Error("StripMetadata should be true")
+	}
+}
+
+func TestMatch_WithWatermark(t *testing.T) {
+	cfg := &Config{
+		Rules: []Rule{
+			{
+				Format:           "jpeg",
+				Output:           "webp",
+				WatermarkText:    "Copyright 2026",
+				WatermarkPos:     "bottom-right",
+				WatermarkOpacity: 0.7,
+				WatermarkSize:    2.0,
+				WatermarkColor:   "#FF0000",
+				WatermarkBg:      "#000000",
+			},
+		},
+	}
+	parsed, err := ParseRules(cfg)
+	if err != nil {
+		t.Fatalf("ParseRules: %v", err)
+	}
+	engine := NewEngine(parsed)
+	job := engine.Match("photo.jpg", codec.JPEG)
+	if job == nil {
+		t.Fatal("expected match, got nil")
+	}
+	if job.WatermarkText != "Copyright 2026" {
+		t.Errorf("WatermarkText = %q, want 'Copyright 2026'", job.WatermarkText)
+	}
+	if job.WatermarkPos != "bottom-right" {
+		t.Errorf("WatermarkPos = %q, want bottom-right", job.WatermarkPos)
+	}
+	if job.WatermarkOpacity != 0.7 {
+		t.Errorf("WatermarkOpacity = %f, want 0.7", job.WatermarkOpacity)
+	}
+	if job.WatermarkSize != 2.0 {
+		t.Errorf("WatermarkSize = %f, want 2.0", job.WatermarkSize)
+	}
+	if job.WatermarkColor != "#FF0000" {
+		t.Errorf("WatermarkColor = %q, want #FF0000", job.WatermarkColor)
+	}
+	if job.WatermarkBg != "#000000" {
+		t.Errorf("WatermarkBg = %q, want #000000", job.WatermarkBg)
+	}
+}
+
+func TestMatch_PreserveMetadataFromRule(t *testing.T) {
+	cfg := &Config{
+		Rules: []Rule{
+			{
+				Format:           "jpeg",
+				Output:           "png",
+				PreserveMetadata: true,
+			},
+		},
+	}
+	parsed, err := ParseRules(cfg)
+	if err != nil {
+		t.Fatalf("ParseRules: %v", err)
+	}
+	engine := NewEngine(parsed)
+	// Engine.Metadata is false, but rule has PreserveMetadata=true
+	engine.Metadata = false
+	job := engine.Match("photo.jpg", codec.JPEG)
+	if job == nil {
+		t.Fatal("expected match, got nil")
+	}
+	if !job.PreserveMetadata {
+		t.Error("PreserveMetadata should be true from rule")
+	}
+}

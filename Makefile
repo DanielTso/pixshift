@@ -5,10 +5,9 @@ LDFLAGS  = -X github.com/DanielTso/pixshift/internal/version.Version=$(VERSION) 
            -X github.com/DanielTso/pixshift/internal/version.Commit=$(COMMIT) \
            -X github.com/DanielTso/pixshift/internal/version.Date=$(DATE)
 
-.PHONY: build build-static clean test lint
+.PHONY: build build-static clean test lint help install bench coverage fmt vet
 
-# Build for current platform
-build:
+build: ## Build binary (requires CGO_ENABLED=1)
 	CGO_ENABLED=1 go build -ldflags '$(LDFLAGS)' -o pixshift ./cmd/pixshift
 	@echo "Built: pixshift"
 
@@ -23,11 +22,31 @@ build-windows:
 		go build -ldflags '$(LDFLAGS) -extldflags "-static"' -o pixshift.exe ./cmd/pixshift
 	@echo "Built: pixshift.exe"
 
-clean:
-	rm -f pixshift pixshift.exe
+clean: ## Remove build artifacts
+	rm -f pixshift pixshift.exe coverage.out coverage.html
 
-test:
+test: ## Run all tests
 	go test ./...
 
-lint:
+lint: ## Run golangci-lint
 	golangci-lint run ./...
+
+help: ## Show available targets
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+
+install: build ## Install to $GOPATH/bin
+	cp pixshift $(GOPATH)/bin/ 2>/dev/null || cp pixshift $(HOME)/go/bin/
+
+bench: ## Run benchmarks
+	go test -bench=. -benchmem ./...
+
+coverage: ## Generate HTML coverage report
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
+
+fmt: ## Format code
+	gofmt -s -w .
+
+vet: ## Run go vet
+	go vet ./...

@@ -8,7 +8,7 @@ func GenerateBash() string {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    formats="jpg jpeg png gif webp tiff bmp heic avif"
+    formats="jpg jpeg png gif webp tiff bmp heic avif jxl arw raf orf rw2"
     completions="bash zsh fish"
 
     case "${prev}" in
@@ -43,7 +43,10 @@ func GenerateBash() string {
         -q|--quality|-j|--jobs|--width|--height|--max-dim)
             return 0
             ;;
-        --sepia|--brightness|--contrast|--blur|--watermark-size|--watermark-opacity|--dedup-threshold|--contact-cols|--contact-size|--webp-method)
+        --sepia|--brightness|--contrast|--blur|--watermark-size|--watermark-opacity|--dedup-threshold|--contact-cols|--contact-size|--webp-method|--rate-limit|--request-timeout|--max-upload|--watch-debounce|--watch-retry)
+            return 0
+            ;;
+        --api-key|--cors-origins|--watch-ignore)
             return 0
             ;;
         -o|--output)
@@ -60,13 +63,13 @@ func GenerateBash() string {
     esac
 
     if [[ "${cur}" == --* ]]; then
-        opts="--format --quality --jobs --output --recursive --preserve-metadata --watch --config --overwrite --dry-run --verbose --version --help --width --height --max-dim --strip-metadata --template --completion --auto-rotate --crop --crop-ratio --crop-gravity --watermark --watermark-pos --watermark-opacity --preset --backup --json --tree --dedup --dedup-threshold --ssim --contact-sheet --contact-cols --contact-size --grayscale --sepia --brightness --contrast --sharpen --blur --invert --progressive --png-compression --webp-method --lossless --watermark-size --watermark-color --watermark-bg --interpolation"
+        opts="--format --quality --jobs --output --recursive --preserve-metadata --watch --config --overwrite --dry-run --verbose --version --help --width --height --max-dim --strip-metadata --template --completion --auto-rotate --crop --crop-ratio --crop-gravity --watermark --watermark-pos --watermark-opacity --preset --backup --json --tree --dedup --dedup-threshold --ssim --contact-sheet --contact-cols --contact-size --grayscale --sepia --brightness --contrast --sharpen --blur --invert --progressive --png-compression --webp-method --lossless --watermark-size --watermark-color --watermark-bg --interpolation --api-key --rate-limit --cors-origins --request-timeout --max-upload --watch-debounce --watch-ignore --watch-retry"
         COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
         return 0
     fi
 
     if [[ "${cur}" == -* ]]; then
-        opts="-f -q -j -o -r -m -w -c -v -V -h -s --format --quality --jobs --output --recursive --preserve-metadata --watch --config --overwrite --dry-run --verbose --version --help --width --height --max-dim --strip-metadata --template --completion --auto-rotate --crop --crop-ratio --crop-gravity --watermark --watermark-pos --watermark-opacity --preset --backup --json --tree --dedup --dedup-threshold --ssim --contact-sheet --contact-cols --contact-size --grayscale --sepia --brightness --contrast --sharpen --blur --invert --progressive --png-compression --webp-method --lossless --watermark-size --watermark-color --watermark-bg --interpolation"
+        opts="-f -q -j -o -r -m -w -c -v -V -h -s --format --quality --jobs --output --recursive --preserve-metadata --watch --config --overwrite --dry-run --verbose --version --help --width --height --max-dim --strip-metadata --template --completion --auto-rotate --crop --crop-ratio --crop-gravity --watermark --watermark-pos --watermark-opacity --preset --backup --json --tree --dedup --dedup-threshold --ssim --contact-sheet --contact-cols --contact-size --grayscale --sepia --brightness --contrast --sharpen --blur --invert --progressive --png-compression --webp-method --lossless --watermark-size --watermark-color --watermark-bg --interpolation --api-key --rate-limit --cors-origins --request-timeout --max-upload --watch-debounce --watch-ignore --watch-retry"
         COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
         return 0
     fi
@@ -84,7 +87,7 @@ func GenerateZsh() string {
 
 _pixshift() {
     local -a formats completions presets gravities positions interpolations
-    formats=(jpg jpeg png gif webp tiff bmp heic avif)
+    formats=(jpg jpeg png gif webp tiff bmp heic avif jxl arw raf orf rw2)
     completions=(bash zsh fish)
     presets=(web thumbnail print archive)
     gravities=(center north south east west)
@@ -143,6 +146,14 @@ _pixshift() {
         '--webp-method[WebP compression method (0-6)]:method:' \
         '--lossless[enable lossless encoding]' \
         '--interpolation[resize interpolation method]:method:(${interpolations})' \
+        '--api-key[require Bearer token authentication]:key:' \
+        '--rate-limit[max requests per minute per IP]:limit:' \
+        '--cors-origins[CORS allowed origins]:origins:' \
+        '--request-timeout[request timeout in seconds]:seconds:' \
+        '--max-upload[max upload size in MB]:size:' \
+        '--watch-debounce[debounce delay in milliseconds]:ms:' \
+        '--watch-ignore[ignore files matching glob pattern]:pattern:' \
+        '--watch-retry[retry failed conversions N times]:retries:' \
         '*:input files:_files'
 }
 
@@ -158,7 +169,7 @@ func GenerateFish() string {
 complete -c pixshift -f
 
 # Format flag
-complete -c pixshift -s f -l format -x -d 'Output format' -a 'jpg jpeg png gif webp tiff bmp heic avif'
+complete -c pixshift -s f -l format -x -d 'Output format' -a 'jpg jpeg png gif webp tiff bmp heic avif jxl arw raf orf rw2'
 
 # Quality flag
 complete -c pixshift -s q -l quality -x -d 'Quality level'
@@ -313,6 +324,34 @@ complete -c pixshift -l watermark-bg -x -d 'Watermark background color'
 
 # Interpolation flag
 complete -c pixshift -l interpolation -x -d 'Resize interpolation method' -a 'nearest bilinear catmullrom'
+
+# v0.5.0 server flags
+
+# API key flag
+complete -c pixshift -l api-key -x -d 'Require Bearer token authentication'
+
+# Rate limit flag
+complete -c pixshift -l rate-limit -x -d 'Max requests per minute per IP'
+
+# CORS origins flag
+complete -c pixshift -l cors-origins -x -d 'CORS allowed origins'
+
+# Request timeout flag
+complete -c pixshift -l request-timeout -x -d 'Request timeout in seconds'
+
+# Max upload flag
+complete -c pixshift -l max-upload -x -d 'Max upload size in MB'
+
+# v0.5.0 watch flags
+
+# Watch debounce flag
+complete -c pixshift -l watch-debounce -x -d 'Debounce delay in milliseconds'
+
+# Watch ignore flag
+complete -c pixshift -l watch-ignore -x -d 'Ignore files matching glob pattern'
+
+# Watch retry flag
+complete -c pixshift -l watch-retry -x -d 'Retry failed conversions N times'
 
 # Positional arguments: file completion
 complete -c pixshift -a '(__fish_complete_path)'

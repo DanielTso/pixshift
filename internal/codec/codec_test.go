@@ -18,6 +18,11 @@ func TestDefaultExtension(t *testing.T) {
 		{CR2, ".cr2"},
 		{NEF, ".nef"},
 		{DNG, ".dng"},
+		{JXL, ".jxl"},
+		{ARW, ".arw"},
+		{RAF, ".raf"},
+		{ORF, ".orf"},
+		{RW2, ".rw2"},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.format), func(t *testing.T) {
@@ -40,6 +45,7 @@ func TestIsSupportedExtension(t *testing.T) {
 	valid := []string{
 		".jpg", ".jpeg", ".png", ".gif", ".webp", ".tiff", ".tif",
 		".bmp", ".heic", ".heif", ".avif", ".cr2", ".nef", ".dng",
+		".jxl", ".arw", ".raf", ".orf", ".rw2",
 	}
 	for _, ext := range valid {
 		if !IsSupportedExtension(ext) {
@@ -66,7 +72,7 @@ func TestIsSupportedExtension_Invalid(t *testing.T) {
 }
 
 func TestIsRAW(t *testing.T) {
-	rawFormats := []Format{CR2, NEF, DNG}
+	rawFormats := []Format{CR2, NEF, DNG, ARW, RAF, ORF, RW2}
 	for _, f := range rawFormats {
 		if !IsRAW(f) {
 			t.Errorf("IsRAW(%q) = false, want true", f)

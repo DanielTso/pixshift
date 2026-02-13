@@ -37,6 +37,17 @@ func detectByMagic(buf []byte, filename string) (Format, bool) {
 		return "", false
 	}
 
+	// JXL: codestream signature FF 0A
+	if buf[0] == 0xFF && buf[1] == 0x0A {
+		return JXL, true
+	}
+
+	// JXL: container signature 00 00 00 0C 4A 58 4C 20
+	if len(buf) >= 12 && buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x0C &&
+		buf[4] == 0x4A && buf[5] == 0x58 && buf[6] == 0x4C && buf[7] == 0x20 {
+		return JXL, true
+	}
+
 	// JPEG: FF D8 FF
 	if buf[0] == 0xFF && buf[1] == 0xD8 && buf[2] == 0xFF {
 		return JPEG, true
@@ -62,6 +73,11 @@ func detectByMagic(buf []byte, filename string) (Format, bool) {
 	// BMP: BM
 	if buf[0] == 'B' && buf[1] == 'M' {
 		return BMP, true
+	}
+
+	// RAF: FUJIFILMCCD-RAW
+	if len(buf) >= 16 && string(buf[:8]) == "FUJIFILM" {
+		return RAF, true
 	}
 
 	// TIFF-based formats: II (little-endian) or MM (big-endian)
@@ -98,6 +114,12 @@ func detectTIFFVariant(buf []byte, filename string) (Format, bool) {
 		return DNG, true
 	case ".cr2":
 		return CR2, true
+	case ".arw":
+		return ARW, true
+	case ".orf":
+		return ORF, true
+	case ".rw2":
+		return RW2, true
 	}
 
 	return TIFF, true
@@ -122,12 +144,22 @@ func detectByExtension(filename string) (Format, bool) {
 		return HEIC, true
 	case ".avif":
 		return AVIF, true
+	case ".jxl":
+		return JXL, true
 	case ".cr2":
 		return CR2, true
 	case ".nef":
 		return NEF, true
 	case ".dng":
 		return DNG, true
+	case ".arw":
+		return ARW, true
+	case ".raf":
+		return RAF, true
+	case ".orf":
+		return ORF, true
+	case ".rw2":
+		return RW2, true
 	}
 	return "", false
 }

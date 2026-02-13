@@ -116,4 +116,8 @@ func registerRAW(r *Registry) {
 	r.RegisterDecoder(&rawDecoder{format: CR2})
 	r.RegisterDecoder(&rawDecoder{format: NEF})
 	r.RegisterDecoder(&rawDecoder{format: DNG})
+	r.RegisterDecoder(&rawDecoder{format: ARW})
+	r.RegisterDecoder(&rawDecoder{format: RAF})
+	r.RegisterDecoder(&rawDecoder{format: ORF})
+	r.RegisterDecoder(&rawDecoder{format: RW2})
 }

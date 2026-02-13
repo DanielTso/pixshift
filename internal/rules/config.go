@@ -41,6 +41,40 @@ type Rule struct {
 	Output  string `yaml:"output"`            // output format (e.g., "webp", "jpg")
 	Quality int    `yaml:"quality,omitempty"` // quality 1-100 (0 = default)
 	Dir     string `yaml:"dir,omitempty"`     // output directory override
+
+	// Transform fields
+	Width            int     `yaml:"width,omitempty"`
+	Height           int     `yaml:"height,omitempty"`
+	MaxDim           int     `yaml:"max_dim,omitempty"`
+	AutoRotate       bool    `yaml:"auto_rotate,omitempty"`
+	CropWidth        int     `yaml:"crop_width,omitempty"`
+	CropHeight       int     `yaml:"crop_height,omitempty"`
+	CropRatio        string  `yaml:"crop_ratio,omitempty"`
+	CropGravity      string  `yaml:"crop_gravity,omitempty"`
+	WatermarkText    string  `yaml:"watermark_text,omitempty"`
+	WatermarkPos     string  `yaml:"watermark_pos,omitempty"`
+	WatermarkOpacity float64 `yaml:"watermark_opacity,omitempty"`
+	WatermarkSize    float64 `yaml:"watermark_size,omitempty"`
+	WatermarkColor   string  `yaml:"watermark_color,omitempty"`
+	WatermarkBg      string  `yaml:"watermark_bg,omitempty"`
+
+	// Filter fields
+	Grayscale  bool    `yaml:"grayscale,omitempty"`
+	Sharpen    bool    `yaml:"sharpen,omitempty"`
+	Invert     bool    `yaml:"invert,omitempty"`
+	Sepia      float64 `yaml:"sepia,omitempty"`
+	Brightness float64 `yaml:"brightness,omitempty"`
+	Contrast   float64 `yaml:"contrast,omitempty"`
+	Blur       float64 `yaml:"blur,omitempty"`
+
+	// Encoding fields
+	Interpolation    string `yaml:"interpolation,omitempty"`
+	PngCompression   int    `yaml:"png_compression,omitempty"`
+	WebpMethod       int    `yaml:"webp_method,omitempty"`
+	Lossless         bool   `yaml:"lossless,omitempty"`
+	Progressive      bool   `yaml:"progressive,omitempty"`
+	StripMetadata    bool   `yaml:"strip_metadata,omitempty"`
+	PreserveMetadata bool   `yaml:"preserve_metadata,omitempty"`
 }
 
 // ParsedRule is a Rule with parsed format fields.
